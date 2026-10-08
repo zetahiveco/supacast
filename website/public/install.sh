@@ -53,11 +53,14 @@ curl -fL "$ASSET_URL" -o "$TMP_DIR/$ASSET_NAME" \
 
 install_macos() {
   local archive="$TMP_DIR/$ASSET_NAME"
+  # Installed via curl, so Gatekeeper's "damaged" quarantine stamp is never
+  # applied — but strip any xattrs anyway to guarantee the app launches.
+  local target="/Applications/${APP_NAME}.app"
   if [[ "$ASSET_NAME" == *.app.tar.gz ]]; then
     tar -xzf "$archive" -C "$TMP_DIR"
     [ -d "$TMP_DIR/${APP_NAME}.app" ] || error "Unexpected archive layout (no ${APP_NAME}.app found)."
     info "Installing to /Applications..."
-    rm -rf "/Applications/${APP_NAME}.app"
+    rm -rf "$target"
     mv "$TMP_DIR/${APP_NAME}.app" /Applications/ 2>/dev/null \
       || sudo mv "$TMP_DIR/${APP_NAME}.app" /Applications/ \
       || error "Could not write to /Applications."
@@ -67,12 +70,14 @@ install_macos() {
     hdiutil attach "$archive" -nobrowse -quiet || error "Could not mount dmg."
     MOUNT_DIR="/Volumes/${APP_NAME}"
     info "Installing to /Applications..."
-    rm -rf "/Applications/${APP_NAME}.app"
+    rm -rf "$target"
     cp -R "$MOUNT_DIR/${APP_NAME}.app" /Applications/ 2>/dev/null \
       || sudo cp -R "$MOUNT_DIR/${APP_NAME}.app" /Applications/ \
       || { hdiutil detach "$MOUNT_DIR" -quiet || true; error "Could not write to /Applications."; }
     hdiutil detach "$MOUNT_DIR" -quiet || true
   fi
+  xattr -cr "$target" 2>/dev/null || true
+  info "Done — launching is not blocked (no quarantine applied)."
 }
 
 install_linux() {

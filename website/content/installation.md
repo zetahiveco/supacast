@@ -54,6 +54,16 @@ Prefer to install by hand? Grab the right asset from the
 | Linux | `Supacast_amd64.deb` | `sudo dpkg -i Supacast_amd64.deb` |
 | Linux | `Supacast_amd64.AppImage` | `chmod +x` and run |
 
+> **Seeing "Supacast is damaged" on macOS?** Browsers stamp downloads with a
+> quarantine flag, and the app isn't notarized yet — remove the flag and it
+> opens normally:
+>
+> ```sh
+> xattr -cr /Applications/Supacast.app
+> ```
+>
+> The `curl | bash` one-line install does this for you automatically.
+
 ## Uninstall
 
 - **macOS**: quit from the tray menu, then drag `Supacast.app` out of
