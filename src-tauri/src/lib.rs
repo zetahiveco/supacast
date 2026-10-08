@@ -300,6 +300,24 @@ async fn paste_to_focused_app(app: tauri::AppHandle, text: String) -> Result<(),
     }
     // Give the OS a beat to restore focus to the previously-used app.
     std::thread::sleep(std::time::Duration::from_millis(300));
+    // The synthesized keystroke must run on the main thread: enigo's macOS
+    // implementation queries HIToolbox text-input APIs that are dispatch-
+    // asserted to the main queue (SIGTRAP — crash — otherwise).
+    #[cfg(target_os = "macos")]
+    {
+        let app_for_paste = app.clone();
+        let _ = app_for_paste.clone().run_on_main_thread(move || {
+            if paste_keystroke().is_err() {
+                let _ = app_for_paste
+                    .notification()
+                    .builder()
+                    .title("Supacast dictate")
+                    .body("Copied to clipboard — paste with Cmd/Ctrl+V")
+                    .show();
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
     if paste_keystroke().is_err() {
         let _ = app
             .notification()
