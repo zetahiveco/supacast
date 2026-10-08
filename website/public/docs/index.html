@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A fast, keyboard-first launcher for apps, files &amp; AI. Spotlight&#x2F;Raycast style, built with Tauri.">
+  <title>Docs · Supacast</title>
+  <link rel="stylesheet" href="https://supacast.vercel.app/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a class="brand" href="https://supacast.vercel.app">
+        <span class="brand-icon">🚀</span> Supacast
+      </a>
+      <div class="nav-links">
+        <a href="https://supacast.vercel.app/installation">Install</a>
+        <a href="https://supacast.vercel.app/docs">Docs</a>
+        <a href="https:&#x2F;&#x2F;github.com&#x2F;zetahiveco&#x2F;supacast" target="_blank" rel="noopener">GitHub</a>
+        <a class="nav-cta" href="https://supacast.vercel.app/installation">Get Supacast</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    
+<article class="doc-page">
+  <header class="doc-header">
+    <h1>Docs</h1>
+    <p class="doc-desc">Shortcuts, features, settings and troubleshooting for Supacast.</p>
+  </header>
+  <div class="doc-body">
+    <h2 id="the-basics">The basics</h2>
+<p>Supacast lives in your menu bar / system tray as a <strong>rocket icon 🚀</strong> and stays
+out of the way. Summon it with the global shortcut, search, press ↵ to launch,
+press Esc or click away to hide it.</p>
+<table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody>
+<tr><td><code>⌘ + ⇧ + Y</code> / <code>Ctrl + ⇧ + Y</code></td><td>Show / hide the launcher (customizable)</td></tr>
+<tr><td><code>↑</code> / <code>↓</code></td><td>Navigate results</td></tr>
+<tr><td><code>↵</code></td><td>Open the selected result</td></tr>
+<tr><td><code>Esc</code></td><td>Hide the launcher</td></tr>
+</tbody></table>
+<h2 id="launcher-modes">Launcher modes</h2>
+<p>Supacast's search bar handles several kinds of input:</p>
+<ul>
+<li><strong>Apps</strong> — type to search installed applications (macOS <code>.app</code> bundles,
+Windows Start Menu shortcuts). ↵ opens the top result.</li>
+<li><strong>Files</strong> — search files via macOS Spotlight (<code>mdfind</code>) or the Windows
+user-folder scan.</li>
+<li><strong>Todos</strong> — add with a due date (<code>/todo Buy milk tomorrow 5pm</code>) and get a
+notification when it's time.</li>
+<li><strong>Notes</strong> — quick notes with instant full-text search.</li>
+<li><strong>Clipboard history</strong> — everything you copy is saved; search and re-copy it.</li>
+<li><strong>Calendar</strong> — view today's events and create new ones
+(<code>/event Standup tomorrow 9am 30m</code>).</li>
+</ul>
+<h2 id="dictate">Dictate</h2>
+<p>Open <strong>Dictate</strong> from the tray menu (or the launcher) and speak instead of
+typing. Two modes:</p>
+<ul>
+<li><strong>Text</strong> — the transcript is copied to your clipboard and pasted directly
+into the app that had focus before you started (requires the Accessibility
+permission on macOS).</li>
+<li><strong>Supacast</strong> — the transcript is answered by the AI agent and shown in the
+launcher window.</li>
+</ul>
+<h2 id="ai-agent">AI agent</h2>
+<p>The agent supports multi-turn conversations with streamed output. To enable
+it, open <strong>Settings</strong> from the tray menu and set:</p>
+<ul>
+<li><strong>OpenAI API key</strong> (required) — stored locally in your app-data directory,
+never sent anywhere except the endpoint you configure.</li>
+<li><strong>Base URL</strong> (optional) — point it at any OpenAI-compatible endpoint
+(e.g. a local model server or a different provider).</li>
+<li><strong>Model</strong> (optional) — pick the model the agent and dictation use.</li>
+</ul>
+<h2 id="settings">Settings</h2>
+<p>Open <strong>Settings</strong> from the tray menu. Settings live in
+<code>settings.json</code> inside the OS app-data directory:</p>
+<table><thead><tr><th>Platform</th><th>Path</th></tr></thead><tbody>
+<tr><td>macOS</td><td><code>~/Library/Application Support/com.supacast.app/settings.json</code></td></tr>
+<tr><td>Windows</td><td><code>%APPDATA%\com.supacast.app\settings.json</code></td></tr>
+<tr><td>Linux</td><td><code>~/.config/com.supacast.app/settings.json</code></td></tr>
+</tbody></table>
+<h2 id="launch-at-login">Launch at login</h2>
+<p>Supacast always starts automatically when your system boots — installed once,
+always available. It registers itself with the OS at every launch:</p>
+<ul>
+<li><strong>macOS</strong> — a launch agent is registered under
+<code>~/Library/LaunchAgents/com.supacast.app.plist</code>.</li>
+<li><strong>Windows</strong> — a registry <code>Run</code> entry is created for the current user.</li>
+</ul>
+<p>Supacast starts hidden in the tray, so it won't steal focus at boot.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p><strong>Global shortcut doesn't work.</strong> Open Supacast once manually after install
+so it can register the shortcut, then check for conflicts with another app
+that owns <code>⌘⇧Y</code>.</p>
+<p><strong>Dictate paste doesn't land in the other app.</strong> On macOS, grant Supacast
+<em>Accessibility</em> access in <em>System Settings → Privacy &amp; Security →
+Accessibility</em>. Without it, the transcript still lands on your clipboard.</p>
+<p><strong>File search returns nothing on macOS.</strong> Spotlight permissions: check
+<em>System Settings → Siri &amp; Spotlight</em> and make sure the relevant folders are
+indexed.</p>
+<p><strong>Wrong app version shows in the tray.</strong> Use the tray menu → <em>Quit Supacast</em>,
+then reopen it — the single-instance handler shows the already-running copy
+otherwise.</p>
+<hr />
+<p>More questions? Open an issue on
+<a href="https://github.com/zetahiveco/supacast/issues">GitHub</a>.</p>
+
+  </div>
+</article>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-left">
+        <span class="brand-icon">🚀</span> Supacast — a fast launcher for apps, files &amp; AI
+      </div>
+      <div class="footer-links">
+        <a href="https://supacast.vercel.app/installation">Install</a>
+        <a href="https://supacast.vercel.app/docs">Docs</a>
+        <a href="https:&#x2F;&#x2F;github.com&#x2F;zetahiveco&#x2F;supacast" target="_blank" rel="noopener">GitHub</a>
+        <a href="https:&#x2F;&#x2F;github.com&#x2F;zetahiveco&#x2F;supacast/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https:&#x2F;&#x2F;github.com&#x2F;zetahiveco&#x2F;supacast/blob/master/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </div>
+    </div>
+    <div class="footer-made">
+      Made by <a href="https:&#x2F;&#x2F;github.com&#x2F;harishdeivanayagam" target="_blank" rel="noopener">harishdeivanayagam</a>
+      <span class="dot">·</span>
+      <a href="https:&#x2F;&#x2F;zetahive.co" target="_blank" rel="noopener">zetahive.co</a>
+    </div>
+  </footer>
+</body>
+</html>

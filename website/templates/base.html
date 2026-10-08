@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="{{ config.description }}">
+  <title>{% block title %}{{ config.title }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ get_url(path='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a class="brand" href="{{ get_url(path='/') }}">
+        <span class="brand-icon">🚀</span> Supacast
+      </a>
+      <div class="nav-links">
+        <a href="{{ get_url(path='/installation/') }}">Install</a>
+        <a href="{{ get_url(path='/docs/') }}">Docs</a>
+        <a href="{{ config.extra.repo }}" target="_blank" rel="noopener">GitHub</a>
+        <a class="nav-cta" href="{{ get_url(path='/installation/') }}">Get Supacast</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-left">
+        <span class="brand-icon">🚀</span> Supacast — a fast launcher for apps, files &amp; AI
+      </div>
+      <div class="footer-links">
+        <a href="{{ get_url(path='/installation/') }}">Install</a>
+        <a href="{{ get_url(path='/docs/') }}">Docs</a>
+        <a href="{{ config.extra.repo }}" target="_blank" rel="noopener">GitHub</a>
+        <a href="{{ config.extra.repo }}/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="{{ config.extra.repo }}/blob/master/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </div>
+    </div>
+    <div class="footer-made">
+      Made by <a href="{{ config.extra.author_github }}" target="_blank" rel="noopener">harishdeivanayagam</a>
+      <span class="dot">·</span>
+      <a href="{{ config.extra.site }}" target="_blank" rel="noopener">zetahive.co</a>
+    </div>
+  </footer>
+</body>
+</html>

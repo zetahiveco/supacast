@@ -1,0 +1,20 @@
+# The base URL the site is deployed to (Vercel).
+base_url = "https://supacast.vercel.app"
+title = "Supacast"
+description = "A fast, keyboard-first launcher for apps, files & AI. Spotlight/Raycast style, built with Tauri."
+default_language = "en"
+
+compile_sass = false
+build_search_index = false
+generate_feeds = false
+
+[markdown]
+highlight_code = true
+highlight_theme = "gruvbox-dark"
+render_emoji = true
+
+[extra]
+author = "harishdeivanayagam"
+author_github = "https://github.com/harishdeivanayagam"
+site = "https://zetahive.co"
+repo = "https://github.com/zetahiveco/supacast"

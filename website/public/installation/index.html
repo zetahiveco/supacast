@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A fast, keyboard-first launcher for apps, files &amp; AI. Spotlight&#x2F;Raycast style, built with Tauri.">
+  <title>Installation · Supacast</title>
+  <link rel="stylesheet" href="https://supacast.vercel.app/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a class="brand" href="https://supacast.vercel.app">
+        <span class="brand-icon">🚀</span> Supacast
+      </a>
+      <div class="nav-links">
+        <a href="https://supacast.vercel.app/installation">Install</a>
+        <a href="https://supacast.vercel.app/docs">Docs</a>
+        <a href="https:&#x2F;&#x2F;github.com&#x2F;zetahiveco&#x2F;supacast" target="_blank" rel="noopener">GitHub</a>
+        <a class="nav-cta" href="https://supacast.vercel.app/installation">Get Supacast</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    
+<article class="doc-page">
+  <header class="doc-header">
+    <h1>Installation</h1>
+    <p class="doc-desc">Install Supacast on macOS, Windows or Linux with a single command.</p>
+  </header>
+  <div class="doc-body">
+    <h2 id="one-line-install">One-line install</h2>
+<h3 id="macos-linux">macOS / Linux</h3>
+<p>Open a terminal and run:</p>
+<pre data-lang="sh" style="background-color:#282828;color:#fdf4c1aa;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#fdf4c1;">curl -fsSL https://supacast.vercel.app/install.sh </span><span style="color:#fe8019;">| </span><span style="color:#fdf4c1;">bash
+</span></code></pre>
+<p>The script downloads the latest release from
+<a href="https://github.com/zetahiveco/supacast/releases">GitHub Releases</a>, copies
+<code>Supacast.app</code> into <code>/Applications</code> (or installs the <code>.deb</code> / AppImage on
+Linux), and Supacast registers itself to <strong>launch automatically at every
+login</strong>.</p>
+<h3 id="windows-powershell">Windows (PowerShell)</h3>
+<p>Open PowerShell and run:</p>
+<pre data-lang="powershell" style="background-color:#282828;color:#fdf4c1aa;" class="language-powershell "><code class="language-powershell" data-lang="powershell"><span>powershell </span><span style="color:#fe8019;">-</span><span>c </span><span style="color:#b8bb26;">&quot;irm https://supacast.vercel.app/install.ps1 | iex&quot;
+</span></code></pre>
+<p>This downloads the latest NSIS installer from GitHub Releases and runs it
+silently. Afterwards you'll find Supacast in your Start Menu and system tray,
+and it will start automatically when Windows boots.</p>
+<h2 id="verify-the-install">Verify the install</h2>
+<p>After installing:</p>
+<ol>
+<li>Look for the <strong>rocket icon 🚀</strong> in the menu bar (macOS) or system tray (Windows/Linux).</li>
+<li>Press <code>⌘ + ⇧ + Y</code> (macOS) or <code>Ctrl + ⇧ + Y</code> (Windows) to summon the launcher.</li>
+<li>If the shortcut doesn't respond, open Supacast once from
+<code>/Applications</code> (macOS) or the Start Menu (Windows) so it can register its
+global shortcut and enable launch-at-login.</li>
+</ol>
+<h2 id="manual-install">Manual install</h2>
+<p>Prefer to install by hand? Grab the right asset from the
+<a href="https://github.com/zetahiveco/supacast/releases">latest release</a>:</p>
+<table><thead><tr><th>Platform</th><th>Asset</th><th>Action</th></tr></thead><tbody>
+<tr><td>macOS (Apple Silicon)</td><td><code>Supacast_aarch64.app.tar.gz</code> or <code>.dmg</code></td><td>Extract to <code>/Applications</code></td></tr>
+<tr><td>macOS (Intel)</td><td><code>Supacast_x64.app.tar.gz</code> or <code>.dmg</code></td><td>Extract to <code>/Applications</code></td></tr>
+<tr><td>Windows</td><td><code>Supacast_x64-setup.exe</code></td><td>Run the NSIS installer</td></tr>
+<tr><td>Linux</td><td><code>Supacast_amd64.deb</code></td><td><code>sudo dpkg -i Supacast_amd64.deb</code></td></tr>
+<tr><td>Linux</td><td><code>Supacast_amd64.AppImage</code></td><td><code>chmod +x</code> and run</td></tr>
+</tbody></table>
+<h2 id="uninstall">Uninstall</h2>
+<ul>
+<li><strong>macOS</strong>: quit from the tray menu, then drag <code>Supacast.app</code> out of
+<code>/Applications</code>. Remove <code>~/Library/LaunchAgents/com.supacast.app.plist</code> to
+stop launch-at-login.</li>
+<li><strong>Windows</strong>: uninstall from <em>Settings → Apps</em>, or re-run the installer and
+choose uninstall.</li>
+<li><strong>Linux</strong>: <code>sudo dpkg -r supacast</code> (deb), or delete the AppImage.</li>
+</ul>
+<h2 id="build-from-source">Build from source</h2>
+<p>Prerequisites: <a href="https://nodejs.org">Node.js</a> 18+ and the
+<a href="https://rustup.rs">Rust toolchain</a>.</p>
+<pre data-lang="sh" style="background-color:#282828;color:#fdf4c1aa;" class="language-sh "><code class="language-sh" data-lang="sh"><span style="color:#fdf4c1;">git clone https://github.com/zetahiveco/supacast.git
+</span><span style="color:#fabd2f;">cd</span><span style="color:#fdf4c1;"> supacast
+</span><span style="color:#fdf4c1;">npm install
+</span><span style="color:#fdf4c1;">npm run tauri dev    </span><span style="font-style:italic;color:#928374;"># run in development
+</span><span style="color:#fdf4c1;">npm run tauri build  </span><span style="font-style:italic;color:#928374;"># build a distributable bundle
+</span></code></pre>
+<p>Bundles land in <code>src-tauri/target/release/bundle/</code>.</p>
+
+  </div>
+</article>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-left">
+        <span class="brand-icon">🚀</span> Supacast — a fast launcher for apps, files &amp; AI
+      </div>
+      <div class="footer-links">
+        <a href="https://supacast.vercel.app/installation">Install</a>
+        <a href="https://supacast.vercel.app/docs">Docs</a>
+        <a href="https:&#x2F;&#x2F;github.com&#x2F;zetahiveco&#x2F;supacast" target="_blank" rel="noopener">GitHub</a>
+        <a href="https:&#x2F;&#x2F;github.com&#x2F;zetahiveco&#x2F;supacast/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https:&#x2F;&#x2F;github.com&#x2F;zetahiveco&#x2F;supacast/blob/master/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </div>
+    </div>
+    <div class="footer-made">
+      Made by <a href="https:&#x2F;&#x2F;github.com&#x2F;harishdeivanayagam" target="_blank" rel="noopener">harishdeivanayagam</a>
+      <span class="dot">·</span>
+      <a href="https:&#x2F;&#x2F;zetahive.co" target="_blank" rel="noopener">zetahive.co</a>
+    </div>
+  </footer>
+</body>
+</html>
