@@ -49,7 +49,9 @@ Be concise and practical — answers are shown in a small launcher window.
 Current local datetime: {now} ({weekday})
 When creating todos, reminders or calendar events, convert natural times like \
 \"5pm\", \"tomorrow morning\" into ISO datetimes in the user's local time (YYYY-MM-DDTHH:MM). \
-For 'note that ...' / 'save a note ...' requests, use the add_note tool (notes have no due time).",
+For 'note that ...' / 'save a note ...' requests, use the add_note tool (notes have no due time). \
+For anything time-sensitive (news, weather, prices, scores, recent releases or docs), \
+use the web_search tool instead of relying on your training data, and mention the sources.",
         now = now.format("%Y-%m-%d %H:%M"),
         weekday = now.format("%A"),
     )
@@ -186,11 +188,35 @@ fn agent_tools() -> Value {
                     "required": ["text"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web for current information the model can't know: news, weather, prices, sports scores, release notes, docs updated after the knowledge cutoff. Returns a concise answer with source URLs.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "The search query, e.g. 'rust 1.90 release notes'" }
+                    },
+                    "required": ["query"]
+                }
+            }
         }
     ])
 }
 
-fn execute_tool(app: &AppHandle, name: &str, args: &Value) -> String {
+/// Execute one agent tool call. `web_search` needs the HTTP client and
+/// credentials for the Responses API, so they are threaded through here.
+fn execute_tool(
+    app: &AppHandle,
+    http: &reqwest::blocking::Client,
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    name: &str,
+    args: &Value,
+) -> String {
     let result: Result<Value, String> = (|| {
         match name {
             "add_todo" => {
@@ -198,6 +224,10 @@ fn execute_tool(app: &AppHandle, name: &str, args: &Value) -> String {
                 let due = args["due"].as_str();
                 let todo = todos::add(app, text, due)?;
                 Ok(json!({ "ok": true, "todo": todo }))
+            }
+            "web_search" => {
+                let query = args["query"].as_str().ok_or("missing query")?;
+                Ok(json!({ "result": web_search(http, base_url, api_key, model, query)? }))
             }
             "list_todos" => {
                 let scope = args["scope"].as_str().unwrap_or("today");
@@ -247,6 +277,84 @@ fn execute_tool(app: &AppHandle, name: &str, args: &Value) -> String {
         Ok(v) => v.to_string(),
         Err(e) => json!({ "error": e }).to_string(),
     }
+}
+
+/// One web search via the OpenAI Responses API's built-in `web_search` tool
+/// (https://developers.openai.com/api/docs/guides/tools-web-search). The
+/// built-in tool only exists on /responses, so this is a self-contained
+/// non-streaming round-trip: the searched answer plus source URLs is
+/// returned as the agent tool result.
+fn web_search(
+    http: &reqwest::blocking::Client,
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    query: &str,
+) -> Result<String, String> {
+    let mut body = json!({
+        "model": model,
+        "input": query,
+        "tools": [{ "type": "web_search", "search_context_size": "low" }],
+    });
+    // Same reasoning heuristic as chat_body: keep the search round-trip fast.
+    if model.starts_with("gpt-5") || model.starts_with("o") {
+        body["reasoning"] = json!({ "effort": "low" });
+    }
+    let resp = http
+        .post(format!("{}/responses", base_url.trim_end_matches('/')))
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .map_err(|e| format!("request failed: {e}"))?;
+    let status = resp.status();
+    let v: Value = resp.json().map_err(|e| format!("bad response: {e}"))?;
+    if !status.is_success() {
+        let msg = v["error"]["message"].as_str().unwrap_or("unknown error");
+        return Err(format!("web search error ({status}): {msg}"));
+    }
+
+    // Extract the answer text and citation URLs from the output items.
+    let mut text = String::new();
+    let mut sources: Vec<(String, String)> = Vec::new(); // (url, title)
+    if let Some(output) = v["output"].as_array() {
+        for item in output {
+            if item["type"] != "message" {
+                continue;
+            }
+            if let Some(content) = item["content"].as_array() {
+                for part in content {
+                    if part["type"] != "output_text" {
+                        continue;
+                    }
+                    if !text.is_empty() {
+                        text.push('\n');
+                    }
+                    text.push_str(part["text"].as_str().unwrap_or(""));
+                    if let Some(anns) = part["annotations"].as_array() {
+                        for a in anns {
+                            if a["type"] == "url_citation" {
+                                let url = a["url"].as_str().unwrap_or("");
+                                let title = a["title"].as_str().unwrap_or("");
+                                if !url.is_empty() && !sources.iter().any(|(u, _)| u == url) {
+                                    sources.push((url.to_string(), title.to_string()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if text.trim().is_empty() {
+        return Err("no results".into());
+    }
+    if !sources.is_empty() {
+        text.push_str("\n\nSources:");
+        for (url, title) in sources.iter().take(5) {
+            text.push_str(&format!("\n- {title} — {url}"));
+        }
+    }
+    Ok(text)
 }
 
 fn chat_body(model: &str, messages: &[Value]) -> Value {
@@ -433,7 +541,7 @@ pub fn run_agent_stream(
 
         for (id, name, args) in &calls {
             let parsed: Value = serde_json::from_str(args).unwrap_or_else(|_| json!({}));
-            let result = execute_tool(app, name, &parsed);
+            let result = execute_tool(app, &http, base_url, api_key, model, name, &parsed);
             messages.push(json!({
                 "role": "tool",
                 "tool_call_id": id,

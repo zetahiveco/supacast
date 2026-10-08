@@ -7,7 +7,7 @@ interface SearchResult {
   title: string;
   subtitle: string;
   path: string;
-  kind: "app" | "file";
+  kind: "app" | "file" | "folder";
 }
 
 interface Todo {
@@ -26,6 +26,15 @@ interface Note {
 interface ClipEntry {
   text: string;
   at: string;
+}
+
+interface Dictation {
+  id: string;
+  text: string;
+  answer?: string | null;
+  mime?: string;
+  created?: string | null;
+  duration_ms?: number | null;
 }
 
 interface ChatTurn {
@@ -47,6 +56,7 @@ type View =
   | { kind: "todos" }
   | { kind: "notes"; query?: string }
   | { kind: "clipboard" }
+  | { kind: "dictations" }
   | { kind: "chat" };
 
 /** Route the raw query to a command view. */
@@ -70,6 +80,10 @@ function route(q: string): View | null {
   if (/^clipboard(\s+history)?/i.test(lower)) {
     return { kind: "clipboard" };
   }
+  // "dictations" (or "dictation history") lists saved dictation recordings.
+  if (/^dictations?(\s+history)?$/i.test(lower)) {
+    return { kind: "dictations" };
+  }
   if (/^dictate\s*\(?(text|txt)\)?/i.test(lower)) {
     return { kind: "chat" }; // handled by Enter -> dictate
   }
@@ -88,6 +102,10 @@ export default function Launcher() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [clips, setClips] = useState<ClipEntry[]>([]);
+  // Dictation recordings view: which row is expanded + its audio data URL.
+  const [dictations, setDictations] = useState<Dictation[]>([]);
+  const [selDict, setSelDict] = useState<string | null>(null);
+  const [dictAudio, setDictAudio] = useState<{ id: string; url: string } | null>(null);
   // Chat state (Ask Supacast)
   const [chat, setChat] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
@@ -105,6 +123,9 @@ export default function Launcher() {
   const debounceRef = useRef<number | undefined>(undefined);
   const searchIdRef = useRef(0);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  // Scrollable results list (todos/notes/clipboard/dictations/search — only
+  // one renders at a time, so one ref serves all views).
+  const listRef = useRef<HTMLUListElement>(null);
   const chatRef = useRef<ChatTurn[]>([]);
   chatRef.current = chat; // updated on every render, safe to read in callbacks
   // Rows must only be hover-selected when the mouse actually moved. Without
@@ -134,6 +155,13 @@ export default function Launcher() {
     setTodos([]);
     setNotes([]);
     setClips([]);
+    setDictations([]);
+    setSelDict(null);
+    setDictAudio(null);
+    // A fresh launcher session: drop the previous chat thread (it stays
+    // available under "dictations"). Without this, leftover chat history
+    // used to block todo/notes/app/file search on every later keystroke.
+    setChat([]);
     setDictateThread(false);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
@@ -180,7 +208,10 @@ export default function Launcher() {
 
   // Debounced app/file search (only in search view).
   useEffect(() => {
-    if (chat.length > 0) return; // in chat, typing edits the next message
+    // In the chat view typing edits the next message, so no search. Guarded
+    // on the *view*, not chat history — a leftover thread must never stop
+    // todo/notes/app/file search from working.
+    if (view.kind === "chat") return;
     const q = query.trim();
     if (!q) return; // empty input: keep the current view (e.g. after add todo/note)
     const routed = route(q);
@@ -194,6 +225,18 @@ export default function Launcher() {
       setSearching(false);
       return;
     }
+
+    // Typing just "ai" and pausing enters AI chat mode with a fresh input.
+    // A short delay keeps fast typing (e.g. "airdrop") in normal search:
+    // any further keystroke before the timer fires cancels the switch.
+    if (/^ai$/i.test(q)) {
+      const t = window.setTimeout(() => {
+        setView({ kind: "chat" });
+        setQuery("");
+      }, 350);
+      return () => window.clearTimeout(t);
+    }
+
     setSearching(true);
     window.clearTimeout(debounceRef.current);
     const searchId = ++searchIdRef.current;
@@ -215,7 +258,7 @@ export default function Launcher() {
       }
     }, 150);
     return () => window.clearTimeout(debounceRef.current);
-  }, [query, chat.length]);
+  }, [query, view.kind]);
 
   // Load data when entering the todos/notes/clipboard views.
   useEffect(() => {
@@ -230,6 +273,13 @@ export default function Launcher() {
     } else if (view.kind === "clipboard") {
       invoke<ClipEntry[]>("get_clipboard_history").then(setClips).catch(console.error);
       setActive(0);
+    } else if (view.kind === "dictations") {
+      invoke<Dictation[]>("list_dictations", { query: null })
+        .then(setDictations)
+        .catch(console.error);
+      setActive(0);
+      setSelDict(null);
+      setDictAudio(null);
     }
   }, [view]);
 
@@ -237,6 +287,14 @@ export default function Launcher() {
   useEffect(() => {
     chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
   }, [chat]);
+
+  // Keep the keyboard-selected row visible when navigating with ↑/↓ (or on
+  // hover). "nearest" avoids jumping when the row is already on screen.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector(".result.active")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [active, view]);
 
   const open = useCallback(async (item: SearchResult) => {
     try {
@@ -256,6 +314,41 @@ export default function Launcher() {
     await invoke("copy_to_clipboard", { text });
     invoke("hide_launcher");
   }, []);
+
+  /** Select (or deselect) a dictation: expands the full transcript and
+   * loads its recording for the inline player. */
+  const toggleDictation = useCallback(
+    async (d: Dictation) => {
+      if (selDict === d.id) {
+        setSelDict(null);
+        setDictAudio(null);
+        return;
+      }
+      setSelDict(d.id);
+      setDictAudio(null);
+      try {
+        const url = await invoke<string>("get_dictation_audio", { id: d.id });
+        setDictAudio({ id: d.id, url });
+      } catch (e) {
+        console.error("failed to load recording", e);
+      }
+    },
+    [selDict],
+  );
+
+  const deleteDictation = useCallback(
+    async (id: string) => {
+      await invoke("delete_dictation", { id });
+      if (selDict === id) {
+        setSelDict(null);
+        setDictAudio(null);
+      }
+      invoke<Dictation[]>("list_dictations", { query: null })
+        .then(setDictations)
+        .catch(console.error);
+    },
+    [selDict],
+  );
 
   const toggleTodo = useCallback(async (todo: Todo) => {
     // Check ⇄ uncheck (keeps the todo; unchecking also re-arms reminders).
@@ -430,9 +523,18 @@ export default function Launcher() {
         if (!query.trim() && dictateThread) {
           // Empty Enter in a dictated thread → back into dictation mode.
           openDictate("supacast");
+        } else if (!chat.length && isDictateQuery) {
+          // "dictate (text)"/"dictate (supacast)" query — Enter starts that
+          // mode, matching the hint shown for this state.
+          openDictate(/text/i.test(query) ? "text" : "supacast");
         } else {
           sendChat(query);
         }
+      } else if (e.key === "Backspace" && !query) {
+        // Empty input + Backspace leaves the chat and returns to search.
+        // The thread is kept — typing "ai" re-enters it.
+        e.preventDefault();
+        setView({ kind: "search" });
       }
       return;
     }
@@ -447,7 +549,9 @@ export default function Launcher() {
             ? flatTodos.length
             : view.kind === "notes"
               ? notes.length
-              : clips.length;
+              : view.kind === "dictations"
+                ? dictations.length
+                : clips.length;
       setActive((a) => Math.min(a + 1, len - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -456,6 +560,13 @@ export default function Launcher() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (view.kind === "search") {
+        // "ai" + Enter jumps straight into AI chat mode (no need to wait
+        // for the pause-based switch).
+        if (/^ai$/i.test(query.trim())) {
+          setView({ kind: "chat" });
+          setQuery("");
+          return;
+        }
         const item = allResults[active];
         if (!item) return;
         if (handleSpecial(item.path)) return;
@@ -475,6 +586,9 @@ export default function Launcher() {
         copyClip(notes[active].text);
       } else if (view.kind === "clipboard" && clips[active]) {
         copyClip(clips[active].text);
+      } else if (view.kind === "dictations" && dictations[active]) {
+        // Enter expands the selected dictation and shows the player.
+        toggleDictation(dictations[active]);
       }
     }
   };
@@ -491,6 +605,13 @@ export default function Launcher() {
     } catch {
       return iso;
     }
+  };
+
+  /** Recording length as m:ss. */
+  const fmtDur = (ms: number | null | undefined) => {
+    if (!ms || ms <= 0) return "";
+    const total = Math.round(ms / 1000);
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
   };
 
   // --- Date-wise todo grouping (Overdue / Today / Tomorrow / ...) ---
@@ -605,8 +726,10 @@ export default function Launcher() {
           ref={inputRef}
           className="search-input"
           placeholder={
-            view.kind === "chat" && chat.length > 0
-              ? "Reply to Supacast…"
+            view.kind === "chat"
+              ? chat.length > 0
+                ? "Reply to Supacast…"
+                : "Ask Supacast…"
               : "Search, or type a command…"
           }
           value={query}
@@ -678,17 +801,21 @@ export default function Launcher() {
         </div>
       )}
 
-      {view.kind === "chat" && chat.length === 0 && isDictateQuery && (
+      {view.kind === "chat" && chat.length === 0 && (
         <div className="agent-view">
           <p className="agent-hint">
-            Press Enter to start {/text/i.test(query) ? "Dictate (Text)" : "Dictate (Supacast)"}…
+            {isDictateQuery
+              ? `Press Enter to start ${
+                  /text/i.test(query) ? "Dictate (Text)" : "Dictate (Supacast)"
+                }…`
+              : "Ask Supacast — type a question and press Enter • Backspace to go back"}
           </p>
         </div>
       )}
 
       {/* ---- Todos view (date-wise, checkable) ---- */}
       {view.kind === "todos" && (
-        <ul className="results">
+        <ul className="results" ref={listRef}>
           {visibleGroups.map((g) => {
             let idx = flatTodos.findIndex((t) => t.id === g.items[0].id);
             return (
@@ -740,7 +867,7 @@ export default function Launcher() {
 
       {/* ---- Notes view ---- */}
       {view.kind === "notes" && (
-        <ul className="results">
+        <ul className="results" ref={listRef}>
           {notes.map((n, i) => (
             <li
               key={n.id}
@@ -775,7 +902,7 @@ export default function Launcher() {
 
       {/* ---- Clipboard history view ---- */}
       {view.kind === "clipboard" && (
-        <ul className="results">
+        <ul className="results" ref={listRef}>
           {clips.map((c, i) => (
             <li
               key={i}
@@ -792,9 +919,64 @@ export default function Launcher() {
         </ul>
       )}
 
+      {/* ---- Dictation recordings view ---- */}
+      {view.kind === "dictations" && (
+        <ul className="results" ref={listRef}>
+          {dictations.map((d, i) => {
+            const selected = selDict === d.id;
+            return (
+              <li
+                key={d.id}
+                className={`result dictation ${i === active ? "active" : ""} ${selected ? "selected" : ""}`}
+                onMouseEnter={() => hover(i)}
+                onClick={() => toggleDictation(d)}
+              >
+                {/* One line per dictation; long transcripts are clipped. */}
+                <div className="dictation-row">
+                  <span className="badge mic">Mic</span>
+                  <span className="result-title dictation-text">{d.text}</span>
+                  <span className="result-sub">
+                    {[fmtDue(d.created ?? null), fmtDur(d.duration_ms)]
+                      .filter(Boolean)
+                      .join(" • ")}
+                  </span>
+                  <button
+                    className="row-trash"
+                    title="Delete dictation"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteDictation(d.id);
+                    }}
+                  >
+                    🗑
+                  </button>
+                </div>
+                {/* Selected: full transcript + recording player. */}
+                {selected && (
+                  <div className="dictation-detail" onClick={(e) => e.stopPropagation()}>
+                    <p className="dictation-full">{d.text}</p>
+                    {d.answer && <p className="dictation-answer">{d.answer}</p>}
+                    {dictAudio?.id === d.id ? (
+                      <audio className="dictation-audio" controls src={dictAudio.url} />
+                    ) : (
+                      <span className="dictation-loading">
+                        <span className="spinner" /> Loading recording…
+                      </span>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+          {dictations.length === 0 && (
+            <li className="empty">No dictations yet — hold Enter on the dictate ring</li>
+          )}
+        </ul>
+      )}
+
       {/* ---- Search results ---- */}
       {view.kind === "search" && allResults.length > 0 && (
-        <ul className="results">
+        <ul className="results" ref={listRef}>
           {allResults.map((r, i) => (
             <li
               key={r.path + i}
@@ -809,7 +991,13 @@ export default function Launcher() {
               }}
             >
               <span className={`badge ${r.kind === "app" && r.path.startsWith("__") ? "ai" : r.kind}`}>
-                {r.path.startsWith("__ask__") ? "AI" : r.kind === "app" ? "App" : "File"}
+                {r.path.startsWith("__ask__")
+                  ? "AI"
+                  : r.kind === "app"
+                    ? "App"
+                    : r.kind === "folder"
+                      ? "Folder"
+                      : "File"}
               </span>
               <span className="result-title">{r.title}</span>
               <span className="result-sub">{r.subtitle}</span>
@@ -823,7 +1011,7 @@ export default function Launcher() {
       )}
       {view.kind === "search" && !query.trim() && (
         <div className="empty hint">
-          Type to search • Try “todo”, “notes”, “clipboard history”, “dictate”, “note: …”
+          Type to search • Try “todo”, “notes”, “clipboard history”, “dictations”, “note: …”
         </div>
       )}
     </div>

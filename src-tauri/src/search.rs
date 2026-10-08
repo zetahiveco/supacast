@@ -10,7 +10,7 @@ pub struct SearchResult {
     pub subtitle: String,
     /// What to open when the user hits Enter.
     pub path: String,
-    /// "app" or "file".
+    /// "app", "file", or "folder".
     pub kind: String,
 }
 
@@ -193,11 +193,12 @@ pub fn search_files(query: &str) -> Vec<SearchResult> {
             .and_then(|n| n.to_str())
             .unwrap_or("Unknown")
             .to_string();
+        let is_dir = path.is_dir();
         results.push(SearchResult {
             title: name,
             subtitle: line.to_string(),
             path: line.to_string(),
-            kind: "file".into(),
+            kind: if is_dir { "folder" } else { "file" }.into(),
         });
         if results.len() >= MAX_FILE_RESULTS {
             break;
@@ -232,7 +233,9 @@ pub fn search_files(query: &str) -> Vec<SearchResult> {
             .filter_entry(|e| !is_hidden(e));
 
         for entry in walker.flatten() {
-            if !entry.file_type().is_file() {
+            // Files and folders both count; only symlinks/oddities are skipped.
+            let ft = entry.file_type();
+            if !ft.is_file() && !ft.is_dir() {
                 continue;
             }
             let name = entry.file_name().to_string_lossy().to_string();
@@ -242,7 +245,7 @@ pub fn search_files(query: &str) -> Vec<SearchResult> {
                     title: name,
                     subtitle: path.clone(),
                     path,
-                    kind: "file".into(),
+                    kind: if ft.is_dir() { "folder" } else { "file" }.into(),
                 });
                 if results.len() >= MAX_FILE_RESULTS {
                     break 'outer;

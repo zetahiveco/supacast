@@ -27,3 +27,4 @@ dist-ssr
 .vercel
 .vercel
 .env*
+.updater/

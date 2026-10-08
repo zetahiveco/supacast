@@ -1,6 +1,7 @@
 mod ai;
 mod calendar;
 mod clipboard_hist;
+mod dictations;
 mod notes;
 mod paste_focus;
 mod search;
@@ -138,6 +139,43 @@ fn list_notes(app: tauri::AppHandle, query: Option<String>) -> Vec<notes::Note> 
 #[tauri::command]
 fn delete_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
     notes::delete(&app, &id)
+}
+
+// --- Dictations (saved recordings + transcripts) ---
+
+#[tauri::command]
+fn save_dictation(
+    app: tauri::AppHandle,
+    audio_base64: String,
+    mime: String,
+    text: String,
+    answer: Option<String>,
+    duration_ms: Option<u64>,
+) -> Result<dictations::Dictation, String> {
+    dictations::save(
+        &app,
+        &audio_base64,
+        &mime,
+        &text,
+        answer,
+        duration_ms,
+    )
+}
+
+#[tauri::command]
+fn list_dictations(app: tauri::AppHandle, query: Option<String>) -> Vec<dictations::Dictation> {
+    dictations::list(&app, query.as_deref())
+}
+
+#[tauri::command]
+fn delete_dictation(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    dictations::delete(&app, &id)
+}
+
+/// The recording as a `data:` URL for the <audio> player.
+#[tauri::command]
+fn get_dictation_audio(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    dictations::audio_data_url(&app, &id)
 }
 
 // --- Clipboard history ---
@@ -443,6 +481,16 @@ fn close_dictate(app: tauri::AppHandle) {
 // Shortcut normalisation
 // ---------------------------------------------------------------------------
 
+/// Clip a message for notification display (notifications don't wrap well).
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let clipped: String = s.chars().take(max).collect();
+        format!("{clipped}…")
+    }
+}
+
 fn normalize_shortcut(raw: &str) -> String {
     let mut parts: Vec<String> = raw
         .split('+')
@@ -478,6 +526,52 @@ fn normalize_shortcut(raw: &str) -> String {
 // ---------------------------------------------------------------------------
 // Window helpers
 // ---------------------------------------------------------------------------
+
+/// Check GitHub Releases for a newer signed bundle and, if found, download
+/// and install it, then restart the app. Uses the updater plugin configured
+/// in tauri.conf.json (`plugins.updater` — endpoint serves `latest.json`
+/// from the latest GitHub release, produced by .github/workflows/release.yml).
+fn check_for_updates(app: &tauri::AppHandle) {
+    use tauri_plugin_notification::NotificationExt;
+    use tauri_plugin_updater::UpdaterExt;
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let notify = |title: &str, body: &str| {
+            let _ = app
+                .notification()
+                .builder()
+                .title(title)
+                .body(body)
+                .show();
+        };
+
+        let result: Result<bool, String> = async {
+            let updater = app.updater().map_err(|e| e.to_string())?;
+            // None means the current version is the newest known release.
+            let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+                return Ok(false);
+            };
+            update
+                .download_and_install(|_chunk, _total| {}, || {})
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(true)
+        }
+        .await;
+
+        match result {
+            Ok(false) => notify("Supacast", "You're on the latest version."),
+            Ok(true) => {
+                // Give the notification a beat before the process is replaced.
+                notify("Supacast", "Update downloaded — restarting to install…");
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                app.restart();
+            }
+            Err(e) => notify("Supacast update failed", &truncate_str(&e, 160)),
+        }
+    });
+}
 
 fn show_launcher(app: &tauri::AppHandle) {
     // Opening the launcher exits dictation: release the global Enter capture.
@@ -566,12 +660,11 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_launcher(app);
         }))
-        .plugin(
-            tauri_plugin_autostart::init(
-                MacosLauncher::LaunchAgent,
-                None, // no extra args — Supacast starts hidden in the tray
-            ),
-        )
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None, // no extra args — Supacast starts hidden in the tray
+        ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_settings,
             save_settings,
@@ -590,6 +683,10 @@ pub fn run() {
             delete_note,
             get_clipboard_history,
             copy_to_clipboard,
+            save_dictation,
+            list_dictations,
+            delete_dictation,
+            get_dictation_audio,
             add_calendar_event,
             list_calendar_events,
             chat_stream,
@@ -620,6 +717,8 @@ pub fn run() {
             let dictate_item =
                 MenuItem::with_id(app, "dictate", "Dictate (Supacast)", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let updates_item =
+                MenuItem::with_id(app, "check-updates", "Check for Updates…", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Supacast", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
@@ -629,6 +728,7 @@ pub fn run() {
                     &dictate_item,
                     &PredefinedMenuItem::separator(app)?,
                     &settings_item,
+                    &updates_item,
                     &PredefinedMenuItem::separator(app)?,
                     &quit_item,
                 ],
@@ -651,6 +751,7 @@ pub fn run() {
                         let _ = app.emit("open-dictate", "supacast".to_string());
                     }
                     "settings" => show_settings(app),
+                    "check-updates" => check_for_updates(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })

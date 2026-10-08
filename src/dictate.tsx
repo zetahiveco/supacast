@@ -33,6 +33,10 @@ export default function Dictate() {
   // the global hotkey forwarded from the backend (both can fire at once).
   const pressActiveRef = useRef(false);
   const holdTimerRef = useRef<number | undefined>(undefined);
+  // Wall-clock time the recorder actually started, for the dictations list.
+  const recordStartRef = useRef(0);
+  // Transcript once transcription succeeded; empty if it failed or hasn't run.
+  const transcribedRef = useRef("");
 
   const cleanupAudio = useCallback(() => {
     window.clearTimeout(hardTimer.current);
@@ -77,6 +81,7 @@ export default function Dictate() {
           audioBase64: b64,
           mime: blob.type || "audio/webm",
         }).then((t) => t.trim());
+        transcribedRef.current = text;
 
         if (!text) {
           setPhase("error");
@@ -85,7 +90,20 @@ export default function Dictate() {
         }
         setTranscript(text);
 
+        // Save the recording + transcript so it shows up under "dictations".
+        const persist = (answer: string | null) =>
+          invoke("save_dictation", {
+            audioBase64: b64,
+            mime: blob.type || "audio/webm",
+            text,
+            answer,
+            durationMs: recordStartRef.current
+              ? Date.now() - recordStartRef.current
+              : null,
+          });
+
         if (mode === "text") {
+          await persist(null).catch((e) => console.error("save failed", e));
           // Copies to clipboard, hides this window and pastes at the
           // cursor of whatever input was focused before dictating.
           await invoke("paste_to_focused_app", { text });
@@ -95,9 +113,24 @@ export default function Dictate() {
           const reply = await invoke<string>("run_agent", { message: text });
           // Hand the Q&A to the launcher: it opens showing this exchange.
           await invoke("dictate_show_answer", { message: text, answer: reply });
+          // Saved after the reply so the answer is stored with the recording.
+          await persist(reply).catch((e) => console.error("save failed", e));
           setPhase("done");
         }
       } catch (e) {
+        // Still keep the recording + transcript even if the agent failed
+        // (only if transcription itself succeeded).
+        if (transcribedRef.current) {
+          void invoke("save_dictation", {
+            audioBase64: b64,
+            mime: blob.type || "audio/webm",
+            text: transcribedRef.current,
+            answer: null,
+            durationMs: recordStartRef.current
+              ? Date.now() - recordStartRef.current
+              : null,
+          }).catch(() => {});
+        }
         setPhase("error");
         setError(String(e));
       }
@@ -110,6 +143,7 @@ export default function Dictate() {
       setError("");
       setTranscript("");
       setAnswer("");
+      transcribedRef.current = "";
       releaseQueuedRef.current = false;
       setPhase("listening");
 
@@ -147,6 +181,7 @@ export default function Dictate() {
 
       hardTimer.current = window.setTimeout(() => finish(false), MAX_RECORD_MS);
       setPhase("recording");
+      recordStartRef.current = Date.now();
 
       // Enter was released before the mic finished starting up.
       if (releaseQueuedRef.current) {
