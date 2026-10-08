@@ -106,6 +106,11 @@ fn is_mac_app_bundle(_path: &Path) -> bool {
     false
 }
 
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn is_mac_app_bundle(_path: &Path) -> bool {
+    false
+}
+
 fn is_hidden(entry: &walkdir::DirEntry) -> bool {
     entry
         .file_name()
