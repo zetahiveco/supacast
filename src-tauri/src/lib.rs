@@ -327,38 +327,60 @@ fn dictate_show_answer(
 
 // --- Dictate window ---
 
+/// Latest desired state of the global Enter capture (true = ring visible).
+static DICTATE_CAPTURE_DESIRED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+/// Serialises capture state changes so a stale worker can't override a
+/// newer request.
+static DICTATE_CAPTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// While the dictate ring is visible, a global OS-wide "Enter" hotkey is
 /// registered and its press/release events are forwarded to the ring as
 /// `dictate-key` events. This makes hold-Enter-to-record work even when the
 /// ring window does not have keyboard focus (e.g. while typing in another
 /// app). The hotkey is removed as soon as dictation ends so regular apps
 /// never lose their Enter key.
+///
+/// The plugin's register/unregister dispatch to the main thread and block
+/// the caller until it runs. This must never happen on the main thread
+/// itself (hotkey handler, sync command) or the event loop deadlocks — so
+/// the state change is always applied from a worker thread.
 fn set_dictate_capture(app: &tauri::AppHandle, enabled: bool) {
-    let sc: Shortcut = match "Enter".parse() {
-        Ok(sc) => sc,
-        Err(_) => {
-            eprintln!("could not parse Enter shortcut");
-            return;
+    use std::sync::atomic::Ordering;
+
+    DICTATE_CAPTURE_DESIRED.store(enabled, Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let _guard = DICTATE_CAPTURE_LOCK.lock().unwrap();
+        // Re-read inside the lock so the most recent request wins even if
+        // worker threads run out of order.
+        let enabled = DICTATE_CAPTURE_DESIRED.load(Ordering::SeqCst);
+
+        let sc: Shortcut = match "Enter".parse() {
+            Ok(sc) => sc,
+            Err(_) => {
+                eprintln!("could not parse Enter shortcut");
+                return;
+            }
+        };
+        if enabled {
+            if app.global_shortcut().is_registered(sc) {
+                return;
+            }
+            if let Err(e) = app.global_shortcut().on_shortcut(sc, |app, _sc, event| {
+                let payload = if event.state == ShortcutState::Pressed {
+                    "down"
+                } else {
+                    "up"
+                };
+                let _ = app.emit("dictate-key", payload.to_string());
+            }) {
+                eprintln!("could not capture global Enter: {e}");
+            }
+        } else if app.global_shortcut().is_registered(sc) {
+            let _ = app.global_shortcut().unregister(sc);
         }
-    };
-    if enabled {
-        if app.global_shortcut().is_registered(sc) {
-            return;
-        }
-        if let Err(e) = app.global_shortcut().on_shortcut(sc, |app, _sc, event| {
-            let payload = if event.state == ShortcutState::Pressed {
-                "down"
-            } else {
-                "up"
-            };
-            let _ = app.emit("dictate-key", payload.to_string());
-        }) {
-            eprintln!("could not capture global Enter: {e}");
-            return;
-        }
-    } else if app.global_shortcut().is_registered(sc) {
-        let _ = app.global_shortcut().unregister(sc);
-    }
+    });
 }
 
 #[tauri::command]
