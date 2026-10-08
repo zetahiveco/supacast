@@ -2,6 +2,7 @@ mod ai;
 mod calendar;
 mod clipboard_hist;
 mod notes;
+mod paste_focus;
 mod search;
 mod settings;
 mod todos;
@@ -286,6 +287,17 @@ async fn paste_to_focused_app(app: tauri::AppHandle, text: String) -> Result<(),
     }
     // Dictation finished: release the global Enter capture.
     set_dictate_capture(&app, false);
+    // Bring the original paste target back to the front so the keystroke
+    // lands in the user's text field. AppKit wants the main thread.
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let app_for_restore = app.clone();
+        let _ = app_for_restore.run_on_main_thread(move || {
+            let _ = tx.send(paste_focus::restore());
+        });
+        let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
+    }
     // Give the OS a beat to restore focus to the previously-used app.
     std::thread::sleep(std::time::Duration::from_millis(300));
     if paste_keystroke().is_err() {
@@ -369,6 +381,11 @@ fn set_dictate_capture(app: &tauri::AppHandle, enabled: bool) {
             }
             if let Err(e) = app.global_shortcut().on_shortcut(sc, |app, _sc, event| {
                 let payload = if event.state == ShortcutState::Pressed {
+                    // The app that's frontmost when Enter goes down is the
+                    // paste target (the user may have switched apps while
+                    // the ring floats on top).
+                    #[cfg(target_os = "macos")]
+                    paste_focus::capture();
                     "down"
                 } else {
                     "up"
@@ -385,6 +402,9 @@ fn set_dictate_capture(app: &tauri::AppHandle, enabled: bool) {
 
 #[tauri::command]
 fn open_dictate(app: tauri::AppHandle, mode: String) -> Result<(), String> {
+    // Remember the user's paste target before the ring takes focus.
+    #[cfg(target_os = "macos")]
+    paste_focus::capture();
     if let Some(window) = app.get_webview_window("dictate") {
         let _ = window.show();
         let _ = window.set_focus();

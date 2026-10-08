@@ -38,6 +38,9 @@ base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 enigo = "0.3"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1
