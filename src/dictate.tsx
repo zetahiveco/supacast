@@ -6,6 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 type Mode = "text" | "supacast";
 
 const MAX_RECORD_MS = 60_000; // safety cap while holding Enter
+const LONG_PRESS_MS = 300; // hold Enter this long before the ring records
 
 export default function Dictate() {
   const [mode, setMode] = useState<Mode>("text");
@@ -25,6 +26,10 @@ export default function Dictate() {
   const hardTimer = useRef<number | undefined>(undefined);
   // Enter released while the mic was still starting up — stop as soon as it does.
   const releaseQueuedRef = useRef(false);
+  // Tracks the physical Enter press shared by the in-window key events and
+  // the global hotkey forwarded from the backend (both can fire at once).
+  const pressActiveRef = useRef(false);
+  const holdTimerRef = useRef<number | undefined>(undefined);
 
   const cleanupAudio = useCallback(() => {
     window.clearTimeout(hardTimer.current);
@@ -44,7 +49,7 @@ export default function Dictate() {
       if (cancelled || !recorder || recorder.state === "inactive") {
         // Discard the recording and exit dictation mode.
         cleanupAudio();
-        getCurrentWindow().hide();
+        void invoke("close_dictate");
         return;
       }
       setPhase("transcribing");
@@ -171,7 +176,7 @@ export default function Dictate() {
   useEffect(() => {
     const unlisten = listen("launcher-shown", () => {
       cleanupAudio();
-      getCurrentWindow().hide();
+      void invoke("close_dictate");
     });
     return () => {
       unlisten.then((fn) => fn());
@@ -180,8 +185,10 @@ export default function Dictate() {
 
   useEffect(() => () => cleanupAudio(), [cleanupAudio]);
 
-  // Keyboard is handled at document level so Esc/Enter work regardless of
-  // which element (if any) has DOM focus when the window is shown.
+  // Keyboard: Esc/Enter work at window level regardless of which element
+  // (if any) has DOM focus. Enter is also forwarded from a global hotkey
+  // (see set_dictate_capture in the backend) so holding Enter records even
+  // when the ring window itself has no keyboard focus.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -190,25 +197,57 @@ export default function Dictate() {
         finish(true);
       } else if (e.key === "Enter") {
         e.preventDefault();
-        // Hold to record (ignore auto-repeat from the held key).
-        if (!e.repeat && (phase === "idle" || phase === "done" || phase === "error")) {
-          start();
-        }
+        beginHold();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key !== "Enter") return;
+      if (e.key === "Enter") endHold();
+    };
+
+    // Hold Enter for LONG_PRESS_MS before recording starts, so quick Enter
+    // taps in other apps are unaffected; release stops and transcribes.
+    const beginHold = () => {
+      if (pressActiveRef.current) return; // same physical press
+      if (phase !== "idle" && phase !== "done" && phase !== "error") return;
+      pressActiveRef.current = true;
+      holdTimerRef.current = window.setTimeout(() => {
+        holdTimerRef.current = undefined;
+        if (pressActiveRef.current) start();
+      }, LONG_PRESS_MS);
+    };
+    const endHold = () => {
+      if (!pressActiveRef.current) return;
+      pressActiveRef.current = false;
+      if (holdTimerRef.current !== undefined) {
+        // Released before the long-press threshold — ignore entirely.
+        window.clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = undefined;
+        return;
+      }
       if (phase === "recording") {
         finish(false); // released → transcribe and do the needful
       } else if (phase === "listening") {
         releaseQueuedRef.current = true; // mic still starting; stop when ready
       }
     };
+
+    const unlisteners = [
+      listen<string>("dictate-key", (e) => {
+        if (e.payload === "down") beginHold();
+        else endHold();
+      }),
+    ];
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     return () => {
+      unlisteners.forEach((p) => p.then((fn) => fn()));
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      if (holdTimerRef.current !== undefined) {
+        window.clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = undefined;
+      }
+      pressActiveRef.current = false;
     };
   }, [phase, finish, start]);
 
@@ -217,7 +256,7 @@ export default function Dictate() {
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (phase === "done" || phase === "error") {
-      getCurrentWindow().hide();
+      void invoke("close_dictate");
       return;
     }
     getCurrentWindow().startDragging();
@@ -228,7 +267,7 @@ export default function Dictate() {
       case "idle":
         return (
           <span className="orb-hint">
-            Press
+            Hold
             <kbd>Enter</kbd>
           </span>
         );

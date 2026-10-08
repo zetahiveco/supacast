@@ -284,6 +284,8 @@ async fn paste_to_focused_app(app: tauri::AppHandle, text: String) -> Result<(),
     if let Some(window) = app.get_webview_window("dictate") {
         let _ = window.hide();
     }
+    // Dictation finished: release the global Enter capture.
+    set_dictate_capture(&app, false);
     // Give the OS a beat to restore focus to the previously-used app.
     std::thread::sleep(std::time::Duration::from_millis(300));
     if paste_keystroke().is_err() {
@@ -314,6 +316,8 @@ fn dictate_show_answer(
         let _ = window.show();
         let _ = window.set_focus();
     }
+    // Dictation finished — the launcher takes over from here.
+    set_dictate_capture(&app, false);
     app.emit(
         "dictate-answer",
         serde_json::json!({ "message": message, "answer": answer }),
@@ -323,6 +327,40 @@ fn dictate_show_answer(
 
 // --- Dictate window ---
 
+/// While the dictate ring is visible, a global OS-wide "Enter" hotkey is
+/// registered and its press/release events are forwarded to the ring as
+/// `dictate-key` events. This makes hold-Enter-to-record work even when the
+/// ring window does not have keyboard focus (e.g. while typing in another
+/// app). The hotkey is removed as soon as dictation ends so regular apps
+/// never lose their Enter key.
+fn set_dictate_capture(app: &tauri::AppHandle, enabled: bool) {
+    let sc: Shortcut = match "Enter".parse() {
+        Ok(sc) => sc,
+        Err(_) => {
+            eprintln!("could not parse Enter shortcut");
+            return;
+        }
+    };
+    if enabled {
+        if app.global_shortcut().is_registered(sc) {
+            return;
+        }
+        if let Err(e) = app.global_shortcut().on_shortcut(sc, |app, _sc, event| {
+            let payload = if event.state == ShortcutState::Pressed {
+                "down"
+            } else {
+                "up"
+            };
+            let _ = app.emit("dictate-key", payload.to_string());
+        }) {
+            eprintln!("could not capture global Enter: {e}");
+            return;
+        }
+    } else if app.global_shortcut().is_registered(sc) {
+        let _ = app.global_shortcut().unregister(sc);
+    }
+}
+
 #[tauri::command]
 fn open_dictate(app: tauri::AppHandle, mode: String) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("dictate") {
@@ -330,7 +368,17 @@ fn open_dictate(app: tauri::AppHandle, mode: String) -> Result<(), String> {
         let _ = window.set_focus();
         let _ = window.emit("dictate-mode", mode);
     }
+    set_dictate_capture(&app, true);
     Ok(())
+}
+
+/// Hide the dictate ring and release the global Enter capture.
+#[tauri::command]
+fn close_dictate(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("dictate") {
+        let _ = window.hide();
+    }
+    set_dictate_capture(&app, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +422,8 @@ fn normalize_shortcut(raw: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn show_launcher(app: &tauri::AppHandle) {
+    // Opening the launcher exits dictation: release the global Enter capture.
+    set_dictate_capture(app, false);
     if let Some(window) = app.get_webview_window("main") {
         position_launcher(&window);
         let _ = window.show();
@@ -491,6 +541,7 @@ pub fn run() {
             paste_to_focused_app,
             dictate_show_answer,
             open_dictate,
+            close_dictate,
         ])
         .setup(|app| {
             // Menu-bar-only app on macOS: no dock icon, lives in the tray.
