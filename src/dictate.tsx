@@ -223,6 +223,17 @@ export default function Dictate() {
 
   useEffect(() => () => cleanupAudio(), [cleanupAudio]);
 
+  // Warm up mic permission when the ring opens: the app may have started
+  // hidden in the tray (launch-at-login), so the launcher's launch-time ask
+  // may not have run yet. This triggers the macOS prompt before the user
+  // holds Enter, instead of failing mid-recording.
+  useEffect(() => {
+    navigator.mediaDevices
+      ?.getUserMedia({ audio: true })
+      .then((stream) => stream.getTracks().forEach((t) => t.stop()))
+      .catch(() => {});
+  }, []);
+
   // Keyboard: Esc/Enter work at window level regardless of which element
   // (if any) has DOM focus. Enter is also forwarded from a global hotkey
   // (see set_dictate_capture in the backend) so holding Enter records even
