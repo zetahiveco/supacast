@@ -39,17 +39,21 @@ if [ "$PLATFORM" = "darwin" ]; then
     ASSET_URL="$(printf '%s\n' "$ASSET_URLS" | grep -m1 -E '(x64|x86_64).*\.app\.tar\.gz' || true)"
     [ -n "$ASSET_URL" ] || ASSET_URL="$(printf '%s\n' "$ASSET_URLS" | grep -m1 -E '(x64|x86_64).*\.dmg' || true)"
   fi
-  [ -n "$ASSET_URL" ] || error "No macOS asset found for $ARCH."
+  [ -n "$ASSET_URL" ] || error "No macOS asset found for $ARCH. If this release was just published, the macOS build may still be uploading — retry in a few minutes."
 elif [ "$PLATFORM" = "linux" ]; then
   ASSET_URL="$(printf '%s\n' "$ASSET_URLS" | grep -m1 -E 'amd64\.deb' || true)"
   [ -n "$ASSET_URL" ] || ASSET_URL="$(printf '%s\n' "$ASSET_URLS" | grep -m1 -E 'amd64.*\.AppImage' || true)"
-  [ -n "$ASSET_URL" ] || error "No Linux asset found for $ARCH."
+  [ -n "$ASSET_URL" ] || error "No Linux asset found for $ARCH. If this release was just published, the Linux build may still be uploading — retry in a few minutes."
 fi
 
 ASSET_NAME="$(basename "$ASSET_URL")"
 info "Downloading ${ASSET_NAME}..."
-curl -fL "$ASSET_URL" -o "$TMP_DIR/$ASSET_NAME" \
-  || error "Download failed."
+# --speed-limit/--speed-time: abort if the transfer stalls (< 1 KB/s for 30s)
+# instead of hanging silently on slow network routes.
+curl -fL --progress-bar --retry 3 --retry-delay 2 \
+  --speed-limit 1024 --speed-time 30 \
+  "$ASSET_URL" -o "$TMP_DIR/$ASSET_NAME" \
+  || error "Download failed or the connection stalled. Check your network and try again."
 
 install_macos() {
   local archive="$TMP_DIR/$ASSET_NAME"
