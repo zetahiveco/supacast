@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Supacast installer — macOS & Linux
 #
-# Usage: curl -fsSL https://supacast.vercel.app/install.sh | bash
+# Usage: curl -fsSL https://supacast-omega.vercel.app/install.sh | bash
 set -euo pipefail
 
 REPO="zetahiveco/supacast"
@@ -16,7 +16,7 @@ ARCH="$(uname -m)"
 case "$OS" in
   Darwin) PLATFORM="darwin" ;;
   Linux)  PLATFORM="linux" ;;
-  *) error "Unsupported OS '$OS'. On Windows use: powershell -c \"irm https://supacast.vercel.app/install.ps1 | iex\"" ;;
+  *) error "Unsupported OS '$OS'. On Windows use: powershell -c \"irm https://supacast-omega.vercel.app/install.ps1 | iex\"" ;;
 esac
 
 TMP_DIR="$(mktemp -d)"
@@ -108,5 +108,5 @@ case "$PLATFORM" in
     ;;
 esac
 printf '\n'
-printf '  Docs: https://supacast.vercel.app/docs/\n'
+printf '  Docs: https://supacast-omega.vercel.app/docs/\n'
 printf '  Made by https://github.com/harishdeivanayagam · https://zetahive.co\n'

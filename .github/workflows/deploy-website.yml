@@ -1,0 +1,43 @@
+name: Deploy Website
+
+# Builds the Zola site (GitHub runners have a modern glibc, which the
+# prebuilt zola binary needs — Vercel's build image does not) and deploys it
+# to Vercel as prebuilt static output.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "website/**"
+      - ".github/workflows/deploy-website.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zola
+        run: |
+          curl -sL -o /tmp/zola.tar.gz https://github.com/getzola/zola/releases/download/v0.20.0/zola-v0.20.0-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf /tmp/zola.tar.gz -C /tmp
+          chmod +x /tmp/zola
+
+      - name: Build site
+        run: /tmp/zola --root website build
+
+      - name: Prepare Build Output API layout
+        run: |
+          mkdir -p .vercel/output/static
+          cp -R website/public/* .vercel/output/static/
+          printf '{\n  "version": 3\n}\n' > .vercel/output/config.json
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npx vercel@latest deploy --prebuilt --prod --yes \
+            --token "$VERCEL_TOKEN" \
+            --scope zetahive

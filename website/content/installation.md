@@ -10,7 +10,7 @@ description = "Install Supacast on macOS, Windows or Linux with a single command
 Open a terminal and run:
 
 ```sh
-curl -fsSL https://supacast.vercel.app/install.sh | bash
+curl -fsSL https://supacast-omega.vercel.app/install.sh | bash
 ```
 
 The script downloads the latest release from
@@ -24,7 +24,7 @@ login**.
 Open PowerShell and run:
 
 ```powershell
-powershell -c "irm https://supacast.vercel.app/install.ps1 | iex"
+powershell -c "irm https://supacast-omega.vercel.app/install.ps1 | iex"
 ```
 
 This downloads the latest NSIS installer from GitHub Releases and runs it

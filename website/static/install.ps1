@@ -1,6 +1,6 @@
 # Supacast installer — Windows
 #
-# Usage: powershell -c "irm https://supacast.vercel.app/install.ps1 | iex"
+# Usage: powershell -c "irm https://supacast-omega.vercel.app/install.ps1 | iex"
 $ErrorActionPreference = "Stop"
 
 $repo = "zetahiveco/supacast"
@@ -12,7 +12,7 @@ function Fail($message) {
 }
 
 if (-not $IsWindows -and $env:OS -ne "Windows_NT") {
-    Fail "This script is for Windows. On macOS/Linux use: curl -fsSL https://supacast.vercel.app/install.sh | bash"
+    Fail "This script is for Windows. On macOS/Linux use: curl -fsSL https://supacast-omega.vercel.app/install.sh | bash"
 }
 
 Write-Host "==> Fetching the latest $appName release..." -ForegroundColor Cyan
@@ -53,5 +53,5 @@ Write-Host ""
 Write-Host "  Launch it from the Start Menu or the system-tray rocket icon."
 Write-Host "  It will now start automatically every time you log in."
 Write-Host ""
-Write-Host "  Docs: https://supacast.vercel.app/docs/"
+Write-Host "  Docs: https://supacast-omega.vercel.app/docs/"
 Write-Host "  Made by https://github.com/harishdeivanayagam - https://zetahive.co"

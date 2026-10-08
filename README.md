@@ -5,9 +5,9 @@
 </p>
 
 <p align="center">
-  <a href="https://supacast.vercel.app">Website</a> ·
-  <a href="https://supacast.vercel.app/installation/">Install</a> ·
-  <a href="https://supacast.vercel.app/docs/">Docs</a> ·
+  <a href="https://supacast-omega.vercel.app">Website</a> ·
+  <a href="https://supacast-omega.vercel.app/installation/">Install</a> ·
+  <a href="https://supacast-omega.vercel.app/docs/">Docs</a> ·
   <a href="https://github.com/zetahiveco/supacast/releases">Releases</a>
 </p>
 
@@ -37,13 +37,13 @@ history and calendar events — plus an AI agent you can chat with.
 ### macOS / Linux
 
 ```sh
-curl -fsSL https://supacast.vercel.app/install.sh | bash
+curl -fsSL https://supacast-omega.vercel.app/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-powershell -c "irm https://supacast.vercel.app/install.ps1 | iex"
+powershell -c "irm https://supacast-omega.vercel.app/install.ps1 | iex"
 ```
 
 The scripts download the latest release from
@@ -51,7 +51,7 @@ The scripts download the latest release from
 (`/Applications` on macOS, the NSIS installer on Windows), and Supacast will
 launch automatically every time your system boots.
 
-See the [installation guide](https://supacast.vercel.app/installation/) for
+See the [installation guide](https://supacast-omega.vercel.app/installation/) for
 manual installs and Linux packages.
 
 ## Build from source
@@ -68,7 +68,7 @@ npm run tauri build  # build a distributable bundle
 ## Documentation
 
 Full docs — shortcuts, settings, dictate, the AI agent and troubleshooting —
-live at [supacast.vercel.app/docs](https://supacast.vercel.app/docs/).
+live at [supacast.vercel.app/docs](https://supacast-omega.vercel.app/docs/).
 
 ## Settings
 

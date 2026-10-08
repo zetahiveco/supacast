@@ -1,4 +1,4 @@
 User-agent: *
 Disallow:
 Allow: /
-Sitemap: https://supacast.vercel.app/sitemap.xml
+Sitemap: https://supacast-omega.vercel.app/sitemap.xml

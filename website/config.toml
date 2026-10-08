@@ -1,5 +1,5 @@
 # The base URL the site is deployed to (Vercel).
-base_url = "https://supacast.vercel.app"
+base_url = "https://supacast-omega.vercel.app"
 title = "Supacast"
 description = "A fast, keyboard-first launcher for apps, files & AI. Spotlight/Raycast style, built with Tauri."
 default_language = "en"
