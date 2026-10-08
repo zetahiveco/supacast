@@ -282,11 +282,9 @@ async fn paste_to_focused_app(app: tauri::AppHandle, text: String) -> Result<(),
     use tauri_plugin_notification::NotificationExt;
 
     clipboard_hist::copy_to_clipboard(&app, &text)?;
-    if let Some(window) = app.get_webview_window("dictate") {
-        let _ = window.hide();
-    }
-    // Dictation finished: release the global Enter capture.
-    set_dictate_capture(&app, false);
+    // The ring stays visible in its "done" state (with the transcript) so
+    // the user can keep dictating — the global Enter capture stays active
+    // until the ring is closed (✕ / Esc / opening the launcher).
     // Bring the original paste target back to the front so the keystroke
     // lands in the user's text field. AppKit wants the main thread.
     #[cfg(target_os = "macos")]

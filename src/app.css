@@ -656,6 +656,31 @@ body,
   transition: transform 0.08s ease-out;
 }
 
+/* Hover ✕ on the ring's top-right corner to close dictation. */
+.orb-close {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(16, 18, 26, 0.92);
+  color: #e8ecf4;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  z-index: 6;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.dictate:hover .orb-close { opacity: 1; }
+.orb-close:hover { background: #e8484f; border-color: #e8484f; }
+
 .orb::before {
   content: "";
   position: absolute;

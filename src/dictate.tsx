@@ -255,6 +255,16 @@ export default function Dictate() {
     };
   }, [finish, start]);
 
+  /// Cancel any in-flight recording (or just close the ring) via the ✕.
+  const closeRing = () => {
+    const phase = phaseRef.current;
+    if (phase === "recording" || phase === "listening") {
+      finish(true); // discards the recording and closes
+    } else {
+      void invoke("close_dictate");
+    }
+  };
+
   // Drag the ring around the screen. A plain click on a finished/errored
   // ring exits instead of dragging.
   const onMouseDown = (e: React.MouseEvent) => {
@@ -308,6 +318,14 @@ export default function Dictate() {
         style={phase === "recording" ? { transform: `scale(${1 + level * 0.35})` } : undefined}
       >
         <div className="orb-core">{orbInner()}</div>
+        <button
+          className="orb-close"
+          title="Close dictate"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={closeRing}
+        >
+          ✕
+        </button>
       </div>
       {transcript && <p className="dictate-transcript">“{transcript}”</p>}
       {answer && <pre className="agent-answer">{answer}</pre>}
