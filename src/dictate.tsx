@@ -4,19 +4,22 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type Mode = "text" | "supacast";
+type Phase = "idle" | "listening" | "recording" | "transcribing" | "thinking" | "done" | "error";
 
 const MAX_RECORD_MS = 60_000; // safety cap while holding Enter
 const LONG_PRESS_MS = 300; // hold Enter this long before the ring records
 
 export default function Dictate() {
   const [mode, setMode] = useState<Mode>("text");
-  const [phase, setPhase] = useState<
-    "idle" | "listening" | "recording" | "transcribing" | "thinking" | "done" | "error"
-  >("idle");
+  const [phase, setPhase] = useState<Phase>("idle");
   const [transcript, setTranscript] = useState("");
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
   const [level, setLevel] = useState(0);
+  // Mirror of `phase` for event listeners that must not re-subscribe while a
+  // physical key press is in progress (re-subscribing would reset refs).
+  const phaseRef = useRef<Phase>("idle");
+  phaseRef.current = phase;
 
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -189,25 +192,16 @@ export default function Dictate() {
   // (if any) has DOM focus. Enter is also forwarded from a global hotkey
   // (see set_dictate_capture in the backend) so holding Enter records even
   // when the ring window itself has no keyboard focus.
+  //
+  // This effect must NOT depend on `phase`: re-subscribing mid-press would
+  // reset the press-tracking refs and drop the release event (the recording
+  // would then never stop). Handlers read the live phase from `phaseRef`.
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        // Stop recording (if any) and exit dictation mode.
-        e.preventDefault();
-        finish(true);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        beginHold();
-      }
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Enter") endHold();
-    };
-
     // Hold Enter for LONG_PRESS_MS before recording starts, so quick Enter
     // taps in other apps are unaffected; release stops and transcribes.
     const beginHold = () => {
       if (pressActiveRef.current) return; // same physical press
+      const phase = phaseRef.current;
       if (phase !== "idle" && phase !== "done" && phase !== "error") return;
       pressActiveRef.current = true;
       holdTimerRef.current = window.setTimeout(() => {
@@ -224,11 +218,26 @@ export default function Dictate() {
         holdTimerRef.current = undefined;
         return;
       }
+      const phase = phaseRef.current;
       if (phase === "recording") {
         finish(false); // released → transcribe and do the needful
       } else if (phase === "listening") {
         releaseQueuedRef.current = true; // mic still starting; stop when ready
       }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        // Stop recording (if any) and exit dictation mode.
+        e.preventDefault();
+        finish(true);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        beginHold();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Enter") endHold();
     };
 
     const unlisteners = [
@@ -243,13 +252,8 @@ export default function Dictate() {
       unlisteners.forEach((p) => p.then((fn) => fn()));
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
-      if (holdTimerRef.current !== undefined) {
-        window.clearTimeout(holdTimerRef.current);
-        holdTimerRef.current = undefined;
-      }
-      pressActiveRef.current = false;
     };
-  }, [phase, finish, start]);
+  }, [finish, start]);
 
   // Drag the ring around the screen. A plain click on a finished/errored
   // ring exits instead of dragging.
