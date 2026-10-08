@@ -34,13 +34,15 @@
     and chat with an AI agent, all from one window.
   </p>
 
-  <div class="install-boxes">
-    <div class="install-box">
-      <div class="install-label">macOS / Linux</div>
+  <div class="install-tabs">
+    <div class="tab-buttons" role="tablist">
+      <button class="tab-btn active" data-tab="tab-macos" type="button">macOS / Linux</button>
+      <button class="tab-btn" data-tab="tab-windows" type="button">Windows PowerShell</button>
+    </div>
+    <div class="tab-panel active" id="tab-macos" role="tabpanel">
       <div class="install-cmd"><code>curl -fsSL https://supacast-omega.vercel.app/install.sh | bash</code></div>
     </div>
-    <div class="install-box">
-      <div class="install-label">Windows PowerShell</div>
+    <div class="tab-panel" id="tab-windows" role="tabpanel" hidden>
       <div class="install-cmd"><code>irm https://supacast-omega.vercel.app/install.ps1 | iex</code></div>
     </div>
   </div>
@@ -107,6 +109,23 @@
   <p>Install it, hit <code>⌘⇧Y</code>, and never touch the mouse again.</p>
   <a class="btn btn-primary" href="https://supacast-omega.vercel.app/installation">Get Supacast →</a>
 </section>
+
+<script>
+  (function () {
+    var buttons = document.querySelectorAll('.tab-btn');
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        buttons.forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(function (panel) {
+          var active = panel.id === btn.dataset.tab;
+          panel.classList.toggle('active', active);
+          panel.hidden = !active;
+        });
+      });
+    });
+  })();
+</script>
 
   </main>
 
