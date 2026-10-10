@@ -12,9 +12,7 @@
 </p>
 
 Supacast is a cross-platform launcher built in **pure Rust with
-[egui](https://github.com/emilk/egui)** — no Tauri, no webview. It's a native
-port of [Supacast](https://github.com/zetahiveco/supacast) (Tauri 2 + React +
-TypeScript) that shares the same backend logic and data directory. It lives
+[egui](https://github.com/emilk/egui)** — a single native binary. It lives
 quietly in your menu bar / system tray, opens with a single global shortcut,
 and lets you search and launch apps, files, todos, notes, clipboard history
 and calendar events — plus an AI agent you can chat with.
@@ -72,13 +70,13 @@ cargo build --release    # build an optimized binary
 ### Linux build dependencies
 
 ```sh
-sudo apt install libasound2-dev libdbus-1-dev libxkbcommon-dev
+sudo apt install libgtk-3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev
 ```
 
-## Data compatibility
+## Data directory
 
-The data directory is unchanged (`com.supacast.app`), so **settings, todos,
-notes, dictations and clipboard history carry over** from the Tauri install.
+Notes, todos, dictations and clipboard history are stored in the OS app-data
+directory (`com.supacast.app`).
 
 ## Documentation
 

@@ -81,5 +81,5 @@ cargo build --release    # build an optimized binary
 ```
 
 On Linux you also need the dev packages
-(`sudo apt install libasound2-dev libdbus-1-dev libxkbcommon-dev`).
+(`sudo apt install libgtk-3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev`).
 The binary lands in `target/release/supacast`.
