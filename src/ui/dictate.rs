@@ -109,8 +109,8 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
                 SUBTEXT,
             );
             let chip = Rect::from_center_size(egui::pos2(center.x, center.y + 9.0), egui::vec2(44.0, 19.0));
-            p.rect_filled(chip, 6.0, Color32::from_rgba_unmultiplied(255, 255, 255, 31));
-            p.rect_stroke(chip, 6.0, Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 51)), egui::StrokeKind::Inside);
+            p.rect_filled(chip, 0.0, Color32::from_rgba_unmultiplied(255, 255, 255, 31));
+            p.rect_stroke(chip, 0.0, Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 51)), egui::StrokeKind::Inside);
             p.text(chip.center(), Align2::CENTER_CENTER, "Enter", FontId::proportional(11.0), TEXT);
         }
         DPhase::Listening | DPhase::Recording => {

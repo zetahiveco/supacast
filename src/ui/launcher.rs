@@ -659,11 +659,12 @@ fn draw_clipboard(app: &mut App, ui: &mut egui::Ui) {
 fn toggle_dictation(app: &mut App, id: &str) {
     if app.sel_dict.as_deref() == Some(id) {
         app.sel_dict = None;
-        app.stop_playback();
+        app.stop_dictation(id);
         return;
     }
     app.sel_dict = Some(id.to_string());
-    app.stop_playback();
+    // Pause whatever was playing; it keeps its position for later resume.
+    app.pause_playbacks_except("");
 }
 
 fn draw_dictations(app: &mut App, ui: &mut egui::Ui) {
@@ -695,9 +696,9 @@ fn draw_dictations(app: &mut App, ui: &mut egui::Ui) {
             );
             if delete {
                 crate::dictations::delete(&d.id).ok();
+                app.stop_dictation(&d.id);
                 if app.sel_dict.as_deref() == Some(d.id.as_str()) {
                     app.sel_dict = None;
-                    app.stop_playback();
                 }
                 app.load_dictations();
                 break;
@@ -707,11 +708,18 @@ fn draw_dictations(app: &mut App, ui: &mut egui::Ui) {
                 break;
             }
             if selected {
+                // Pin the expanded panel to exactly the row width: claim
+                // the content width (row width minus the frame's 8px
+                // margins on each side) as both min and max, so the fill
+                // always spans the full row — never narrower (content
+                // wrap) or wider (overflow).
+                let row_w = ui.available_width();
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 12))
                     .inner_margin(egui::Margin::same(8))
                     .show(ui, |ui| {
-                        ui.set_max_width(ui.available_width());
+                        ui.set_min_width(row_w - 16.0);
+                        ui.set_max_width(row_w - 16.0);
                         ui.add(egui::Label::new(
                             egui::RichText::new(&d.text).size(13.0).color(TEXT),
                         ).wrap());
@@ -729,36 +737,32 @@ fn draw_dictations(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
-/// Inline audio player for a dictation: play/pause button, clickable
+/// Inline audio player for a dictation: a play/pause button, clickable
 /// seek bar (with progress fill + knob) and a time readout. Vector icons
 /// throughout — no font glyphs.
 fn draw_player(app: &mut App, ui: &mut egui::Ui, id: &str, duration_ms: Option<u64>) {
-    let playing_this = app.playing_id.as_deref() == Some(id);
-    let active = playing_this && app.playback.is_some();
-    let paused = if active {
-        app.playback.as_ref().unwrap().is_paused()
-    } else {
-        false
-    };
-    let (pos_s, dur_s) = if active {
-        let h = app.playback.as_ref().unwrap();
-        (h.position_secs() as f32, h.duration_secs() as f32)
-    } else {
-        (0.0, duration_ms.unwrap_or(0) as f32 / 1000.0)
+    // Snapshot the handle state first (position, duration, paused) so the
+    // mutable `app` is free for the click handlers below.
+    let handle = app.playback_handle(id);
+    let active = handle.is_some();
+    let paused = handle.map(|h| h.is_paused()).unwrap_or(false);
+    let (pos_s, dur_s) = match handle {
+        Some(h) => (h.position_secs() as f32, h.duration_secs() as f32),
+        None => (0.0, duration_ms.unwrap_or(0) as f32 / 1000.0),
     };
 
     // Keep the progress bar animating while this player is active.
-    if active {
+    if active && !paused {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
     }
 
     ui.horizontal(|ui| {
-        // ---- Play / pause button ----
+        // ---- Play / pause button (single button; no stop) ----
         let (btn_rect, btn_resp) =
             ui.allocate_exact_size(egui::vec2(24.0, 22.0), egui::Sense::click());
         let p = ui.painter();
         if btn_resp.hovered() {
-            p.rect_filled(btn_rect, 5.0, ROW_ACTIVE);
+            p.rect_filled(btn_rect, 0.0, ROW_ACTIVE); // sharp
         }
         if active && !paused {
             crate::ui::draw_pause(p, btn_rect, TEXT);
@@ -767,23 +771,11 @@ fn draw_player(app: &mut App, ui: &mut egui::Ui, id: &str, duration_ms: Option<u
         }
         if btn_resp.clicked() {
             if active {
-                let h = app.playback.as_ref().unwrap();
-                h.set_paused(!paused);
+                if let Some(h) = app.playback_handle(id) {
+                    h.set_paused(!paused);
+                }
             } else {
                 play_dictation(app, id);
-            }
-        }
-
-        // ---- Stop button (resets playback) ----
-        if active {
-            let (stop_rect, stop_resp) =
-                ui.allocate_exact_size(egui::vec2(20.0, 22.0), egui::Sense::click());
-            if stop_resp.hovered() {
-                ui.painter().rect_filled(stop_rect, 5.0, ROW_ACTIVE);
-            }
-            crate::ui::draw_stop(ui.painter(), stop_rect, SUBTEXT);
-            if stop_resp.clicked() {
-                app.stop_playback();
             }
         }
 
@@ -794,11 +786,11 @@ fn draw_player(app: &mut App, ui: &mut egui::Ui, id: &str, duration_ms: Option<u
             ui.allocate_exact_size(egui::vec2(bar_w, 16.0), egui::Sense::click_and_drag());
         let p = ui.painter();
         let track = egui::Rect::from_center_size(bar_rect.center(), egui::vec2(bar_w - 4.0, 4.0));
-        p.rect_filled(track, 2.0, Color32::from_rgba_unmultiplied(255, 255, 255, 30));
+        p.rect_filled(track, 0.0, Color32::from_rgba_unmultiplied(255, 255, 255, 30));
         let frac = if dur_s > 0.0 { (pos_s / dur_s).clamp(0.0, 1.0) } else { 0.0 };
         if frac > 0.0 {
             let fill = egui::Rect::from_min_size(track.min, egui::vec2(track.width() * frac, 4.0));
-            p.rect_filled(fill, 2.0, ACCENT);
+            p.rect_filled(fill, 0.0, ACCENT);
         }
         let knob_x = track.min.x + track.width() * frac;
         p.circle_filled(
@@ -807,11 +799,11 @@ fn draw_player(app: &mut App, ui: &mut egui::Ui, id: &str, duration_ms: Option<u
             if active { ACCENT } else { SUBTEXT },
         );
 
-        // Click/drag on the bar seeks (only while playing this dictation).
+        // Click/drag on the bar seeks (only while this dictation is loaded).
         if active && (bar_resp.dragged() || bar_resp.clicked()) {
             if let Some(pointer) = ui.ctx().pointer_interact_pos() {
                 let f = ((pointer.x - track.min.x) / track.width()).clamp(0.0, 1.0);
-                if let Some(h) = app.playback.as_ref() {
+                if let Some(h) = app.playback_handle(id) {
                     h.seek_secs(f as f64 * h.duration_secs());
                 }
             }
@@ -835,17 +827,23 @@ fn fmt_secs(secs: f32) -> String {
 }
 
 fn play_dictation(app: &mut App, id: &str) {
-    app.stop_playback(); // never let two dictations overlap
+    // Pause whatever else is playing — it keeps its position and resumes
+    // when picked again; only one dictation plays at a time.
+    app.pause_playbacks_except(id);
+    // Already loaded (paused): just resume from where it was.
+    if app.playback_handle(id).is_some() {
+        if let Some(h) = app.playback_handle(id) {
+            h.set_paused(false);
+        }
+        return;
+    }
     match crate::dictations::load_audio_bytes(id) {
         Ok((bytes, _mime)) => {
             // wav (this app) and m4a/mp3/ogg (old Tauri app) all decode
             // here — everything plays inline in the player.
             match crate::audio::decode_audio(&bytes) {
                 Ok((samples, rate)) => match crate::audio::play_samples(samples, rate) {
-                    Ok(handle) => {
-                        app.playback = Some(handle);
-                        app.playing_id = Some(id.to_string());
-                    }
+                    Ok(handle) => app.playbacks.push((id.to_string(), handle)),
                     Err(e) => crate::platform::notify("Supacast", &format!("Playback failed: {e}")),
                 },
                 Err(e) => crate::platform::notify("Supacast", &format!("Playback failed: {e}")),
@@ -1056,7 +1054,7 @@ fn result_row(
         Color32::TRANSPARENT
     };
     if bg != Color32::TRANSPARENT {
-        ui.painter().rect_filled(rect, 6.0, bg);
+        ui.painter().rect_filled(rect, 0.0, bg); // sharp row highlight
     }
 
     let mut x = rect.min.x + 12.0;
@@ -1068,10 +1066,10 @@ fn result_row(
         );
         let p = ui.painter();
         if is_checked {
-            p.rect_filled(cb, 4.0, ACCENT);
+            p.rect_filled(cb, 0.0, ACCENT);
             crate::ui::draw_check(p, cb, crate::ui::BG, 2.0);
         } else {
-            p.rect_stroke(cb, 4.0, egui::Stroke::new(1.5, SUBTEXT), egui::StrokeKind::Inside);
+            p.rect_stroke(cb, 0.0, egui::Stroke::new(1.5, SUBTEXT), egui::StrokeKind::Inside);
         }
         x += 22.0;
     }
@@ -1128,7 +1126,7 @@ fn result_row(
         );
         let del_resp = ui.interact(del_rect, ui.id().with(("del", i)), Sense::click());
         if del_resp.hovered() {
-            ui.painter().rect_filled(del_rect, 5.0, Color32::from_rgba_unmultiplied(235, 110, 110, 40));
+            ui.painter().rect_filled(del_rect, 0.0, Color32::from_rgba_unmultiplied(235, 110, 110, 40));
         }
         crate::ui::draw_x(ui.painter(), del_rect.center(), 5.0, SUBTEXT, 1.8);
         delete_clicked = del_resp.clicked();

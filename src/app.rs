@@ -206,9 +206,10 @@ pub struct App {
     /// quit instead of "close the settings panel".
     pub quitting: bool,
 
-    // Dictation playback (native, replaces the <audio> element).
-    pub playback: Option<audio::PlaybackHandle>,
-    pub playing_id: Option<String>,
+    // Dictation playback (native, replaces the <audio> element). One handle
+    // per dictation so a paused dictation keeps its position and resumes
+    // where it was instead of restarting from the beginning.
+    pub playbacks: Vec<(String, audio::PlaybackHandle)>,
 }
 
 impl eframe::App for App {
@@ -344,12 +345,8 @@ impl eframe::App for App {
             }
         }
 
-        if let Some(playback) = &self.playback {
-            if playback.is_done() {
-                self.playback = None;
-                self.playing_id = None;
-            }
-        }
+        // Finished dictations drop out; the player resets to the start.
+        self.playbacks.retain(|(_, h)| !h.is_done());
     }
 }
 
@@ -364,6 +361,23 @@ impl App {
         // Use the OS system font (SF Pro on macOS) for all UI text, with
         // egui's bundled fonts as fallbacks.
         crate::fonts::install(&cc.egui_ctx);
+
+        // Sharp edges everywhere: zero the default widget corner radii so
+        // every stock egui widget (buttons, text edits, collapsing headers,
+        // checkboxes…) matches the sharp window frames.
+        cc.egui_ctx.all_styles_mut(|style| {
+            for w in [
+                &mut style.visuals.widgets.noninteractive,
+                &mut style.visuals.widgets.inactive,
+                &mut style.visuals.widgets.hovered,
+                &mut style.visuals.widgets.active,
+                &mut style.visuals.widgets.open,
+            ] {
+                w.corner_radius = egui::CornerRadius::ZERO;
+            }
+            style.visuals.window_corner_radius = egui::CornerRadius::ZERO;
+            style.visuals.menu_corner_radius = egui::CornerRadius::ZERO;
+        });
         let s = shared.settings.lock().unwrap().clone();
         // Start fully hidden; the launcher appears on hotkey / tray Open
         // (the window is always-on-top, so a default-open window would
@@ -425,8 +439,7 @@ impl App {
             settings_status: SettingsStatus::Idle,
             settings_window_h: 0.0,
             quitting: false,
-            playback: None,
-            playing_id: None,
+            playbacks: Vec::new(),
         };
         app.need_focus = true;
         app
@@ -570,7 +583,7 @@ impl App {
             ctx.request_repaint_after(Duration::from_millis(33));
         }
         // Animate the dictation player (progress bar) while audio plays.
-        if self.playback.is_some() {
+        if self.playbacks.iter().any(|(_, h)| !h.is_paused()) {
             ctx.request_repaint_after(Duration::from_millis(50));
         }
 
@@ -863,6 +876,9 @@ impl App {
             return;
         }
         self.launcher_visible = false;
+        // Closing the launcher stops any dictation playback — audio should
+        // not keep playing from a hidden window.
+        self.stop_all_playback();
         self.apply_window_mode(ctx);
     }
 
@@ -885,15 +901,43 @@ impl App {
         self.dictations = dictations::list(None);
         self.active = 0;
         self.sel_dict = None;
-        self.stop_playback();
+        // Existing playback handles are kept: a paused dictation still
+        // resumes from its position after the list is reloaded.
     }
 
-    pub fn stop_playback(&mut self) {
-        if let Some(p) = &self.playback {
+    /// Stop every dictation playback (launcher hidden / list reloaded).
+    pub fn stop_all_playback(&mut self) {
+        for (_, p) in &self.playbacks {
             p.stop();
         }
-        self.playback = None;
-        self.playing_id = None;
+        self.playbacks.clear();
+    }
+
+    /// Stop and forget one dictation's playback (row collapsed / deleted).
+    pub fn stop_dictation(&mut self, id: &str) {
+        if let Some(i) = self.playbacks.iter().position(|(pid, _)| pid == id) {
+            let (_, p) = self.playbacks.remove(i);
+            p.stop();
+        }
+    }
+
+    /// Pause every playing dictation except `id` (pass `""` to pause all).
+    /// Paused dictations keep their position and resume where they were
+    /// when played again.
+    pub fn pause_playbacks_except(&mut self, id: &str) {
+        for (pid, p) in &self.playbacks {
+            if pid != id {
+                p.set_paused(true);
+            }
+        }
+    }
+
+    /// The playback handle for a dictation, if it is loaded.
+    pub fn playback_handle(&self, id: &str) -> Option<&audio::PlaybackHandle> {
+        self.playbacks
+            .iter()
+            .find(|(pid, _)| pid == id)
+            .map(|(_, h)| h)
     }
 
     // -----------------------------------------------------------------

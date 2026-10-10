@@ -83,7 +83,7 @@ pub fn icon_x(ui: &mut egui::Ui) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
     let p = ui.painter();
     if resp.hovered() {
-        p.rect_filled(rect, 5.0, ROW_ACTIVE);
+        p.rect_filled(rect, 0.0, ROW_ACTIVE); // sharp
     }
     draw_x(p, rect.center(), 5.0, SUBTEXT, 1.8);
     resp
@@ -141,20 +141,14 @@ pub fn draw_pause(p: &egui::Painter, rect: egui::Rect, color: Color32) {
     let h = rect.height() * 0.62;
     p.rect_filled(
         egui::Rect::from_center_size(egui::pos2(c.x - w, c.y), egui::vec2(w, h)),
-        1.0,
+        0.0,
         color,
     );
     p.rect_filled(
         egui::Rect::from_center_size(egui::pos2(c.x + w, c.y), egui::vec2(w, h)),
-        1.0,
+        0.0,
         color,
     );
-}
-
-/// A ⏹ stop square centered in `rect`.
-pub fn draw_stop(p: &egui::Painter, rect: egui::Rect, color: Color32) {
-    let s = rect.height() * 0.5;
-    p.rect_filled(egui::Rect::from_center_size(rect.center(), egui::vec2(s, s)), 1.5, color);
 }
 
 /// Three pulsing dots (thinking/transcribing) centered at `center`.

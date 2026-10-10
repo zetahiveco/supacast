@@ -63,7 +63,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
                 ))
                 .fill(INPUT_BG)
                 .stroke(egui::Stroke::new(1.0, if app.shortcut_recording { ACCENT } else { INPUT_BORDER }))
-                .corner_radius(2.0)
+                .corner_radius(0.0)
                 .min_size(egui::vec2(ui.available_width(), 34.0));
                 if ui.add(btn).clicked() {
                     app.shortcut_recording = !app.shortcut_recording;
@@ -141,7 +141,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
             let close = egui::Button::new(egui::RichText::new("Close").color(TEXT))
                 .fill(INPUT_BG)
                 .stroke(egui::Stroke::new(1.0, INPUT_BORDER))
-                .corner_radius(2.0)
+                .corner_radius(0.0)
                 .min_size(egui::vec2(72.0, 30.0));
             if ui.add(close).clicked() {
                 app.save_settings();
@@ -150,7 +150,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
             let save = egui::Button::new(egui::RichText::new("Save").color(egui::Color32::WHITE))
                 .fill(ACCENT)
                 .stroke(egui::Stroke::NONE)
-                .corner_radius(2.0)
+                .corner_radius(0.0)
                 .min_size(egui::vec2(72.0, 30.0));
             if ui.add(save).clicked() {
                 app.save_settings();
@@ -243,7 +243,7 @@ fn input(ui: &mut egui::Ui, text: &mut String, hint: &str, password: bool) {
     if out.has_focus() {
         ui.painter().rect_stroke(
             out.rect,
-            2.0,
+            0.0,
             egui::Stroke::new(1.0, ACCENT),
             egui::StrokeKind::Inside,
         );
