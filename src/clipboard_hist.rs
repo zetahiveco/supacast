@@ -83,6 +83,12 @@ pub fn get_history() -> Vec<ClipEntry> {
     with_history(|hist| hist.clone()).unwrap_or_default()
 }
 
+/// Delete the entire clipboard history (memory + disk).
+pub fn clear_history() {
+    with_history(|hist| hist.clear());
+    persist(&[]);
+}
+
 pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(text.to_string()).map_err(|e| e.to_string())

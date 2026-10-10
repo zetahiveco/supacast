@@ -388,6 +388,18 @@ fn suggestions(app: &App) -> Vec<SearchResult> {
         path: "__dictate_supacast__".into(),
         kind: "app".into(),
     });
+    // "clear clipboard" — typed command to wipe the clip history.
+    if lower.starts_with("clear") {
+        let n = crate::clipboard_hist::get_history().len();
+        out.push(SearchResult {
+            title: "Clear clipboard history".into(),
+            subtitle: format!(
+                "Deletes all {n} clips — press Enter to confirm"
+            ),
+            path: "__clear_clipboard__".into(),
+            kind: "app".into(),
+        });
+    }
     out
 }
 
@@ -412,6 +424,12 @@ fn builtin_commands() -> Vec<SearchResult> {
             title: "clipboard history".into(),
             subtitle: "Recent clips — Enter copies again".into(),
             path: "__view_clipboard__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "clear clipboard".into(),
+            subtitle: "Delete the entire clipboard history".into(),
+            path: "__clear_clipboard__".into(),
             kind: "app".into(),
         },
         SearchResult {
@@ -632,6 +650,16 @@ fn handle_special(app: &mut App, path: &str) -> bool {
         "__view_clipboard__" => {
             app.view = View::Clipboard;
             app.clips = crate::clipboard_hist::get_history();
+            return true;
+        }
+        "__clear_clipboard__" => {
+            crate::clipboard_hist::clear_history();
+            // Show the emptied view as inline feedback instead of a
+            // notification banner.
+            app.query.clear();
+            app.view = View::Clipboard;
+            app.clips = Vec::new();
+            app.need_focus = true;
             return true;
         }
         "__view_dictations__" => {
@@ -921,6 +949,32 @@ fn draw_clipboard(app: &mut App, ui: &mut egui::Ui) {
         hint(ui, "Clipboard history is empty");
         return;
     }
+    // Header: clip count on the left, Clear all on the right.
+    let n = app.clips.len();
+    ui.horizontal(|ui| {
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.add(egui::Label::new(
+                egui::RichText::new(format!("{n} clip{} — Enter copies", if n == 1 { "" } else { "s" }))
+                    .size(12.5)
+                    .color(SUBTEXT),
+            ));
+        });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let btn = egui::Button::new(
+                egui::RichText::new("Clear all").size(12.0).color(RED),
+            )
+            .fill(egui::Color32::from_rgba_unmultiplied_const(255, 90, 90, 22))
+            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied_const(255, 90, 90, 60)))
+            .corner_radius(0.0)
+            .min_size(egui::vec2(70.0, 24.0));
+            if ui.add(btn).clicked() {
+                crate::clipboard_hist::clear_history();
+                app.clips = Vec::new();
+                app.active = 0;
+            }
+        });
+    });
+    ui.add_space(4.0);
     egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
         for (i, c) in app.clips.clone().iter().enumerate() {
