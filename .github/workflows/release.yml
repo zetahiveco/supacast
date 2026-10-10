@@ -1,0 +1,70 @@
+name: Release
+
+# Builds the native binary for macOS (arm64 + x64), Linux and Windows and
+# publishes the archives to GitHub Releases. The website install.sh /
+# install.ps1 scripts download their assets from these releases.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-13 runners are retired; cross-compile x86_64 from arm64.
+          - os: macos-latest # Apple Silicon
+            target: aarch64-apple-darwin
+          - os: macos-latest # Intel (cross-compiled)
+            target: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libdbus-1-dev libxkbcommon-dev pkg-config
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package (macOS & Linux)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czf "$OLDPWD/supacast-${{ matrix.target }}.tar.gz" supacast
+          cd "$OLDPWD"
+          shasum -a 256 "supacast-${{ matrix.target }}.tar.gz" > "supacast-${{ matrix.target }}.tar.gz.sha256"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/${{ matrix.target }}/release/supacast.exe" -DestinationPath "supacast-${{ matrix.target }}.zip"
+          $hash = (Get-FileHash "supacast-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  supacast-${{ matrix.target }}.zip" | Out-File -Encoding ascii "supacast-${{ matrix.target }}.zip.sha256"
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Supacast ${{ github.ref_name }}"
+          body: "See the assets below to download and install Supacast for your platform."
+          files: supacast-*
+          fail_on_unmatched_files: true

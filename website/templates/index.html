@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-badge">v0.1.0 · MIT licensed · macOS, Windows &amp; Linux</div>
+  <h1>One shortcut.<br><span class="gradient">Everything on your machine.</span></h1>
+  <p class="hero-sub">
+    Supacast is a fast, keyboard-first launcher that lives in your menu bar.
+    Search apps &amp; files, manage todos, notes, clipboard history and calendar —
+    and chat with an AI agent, all from one window.
+  </p>
+
+  <div class="install-tabs">
+    <div class="tab-buttons" role="tablist">
+      <button class="tab-btn active" data-tab="tab-macos" type="button">macOS / Linux</button>
+      <button class="tab-btn" data-tab="tab-windows" type="button">Windows PowerShell</button>
+    </div>
+    <div class="tab-panel active" id="tab-macos" role="tabpanel">
+      <div class="install-cmd"><code>curl -fsSL https://supacast-omega.vercel.app/install.sh | bash</code></div>
+    </div>
+    <div class="tab-panel" id="tab-windows" role="tabpanel" hidden>
+      <div class="install-cmd"><code>irm https://supacast-omega.vercel.app/install.ps1 | iex</code></div>
+    </div>
+  </div>
+
+  <div class="hero-cta">
+    <a class="btn btn-primary" href="{{ get_url(path='/installation/') }}">Installation guide</a>
+    <a class="btn btn-ghost" href="{{ get_url(path='/docs/') }}">Read the docs</a>
+  </div>
+</section>
+
+<section class="features">
+  <h2>Everything a launcher should do — and a bit more</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="feature-icon">🔍</div>
+      <h3>App &amp; file search</h3>
+      <p>Instantly find macOS <code>.app</code> bundles and Windows Start Menu apps. Files come from Spotlight (<code>mdfind</code>) or a fast Windows folder scan.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⌨️</div>
+      <h3>Global shortcut</h3>
+      <p>Summon Supacast with <code>⌘ + ⇧ + Y</code> (or <code>Ctrl + ⇧ + Y</code> on Windows). Change it any time in Settings.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✅</div>
+      <h3>Todos &amp; reminders</h3>
+      <p>Capture tasks with due dates. A background loop notifies you right on time, even while Supacast stays hidden.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📝</div>
+      <h3>Notes</h3>
+      <p>Jot things down without leaving your keyboard, then find them again with instant search.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📋</div>
+      <h3>Clipboard history</h3>
+      <p>Everything you copy is saved and searchable. Paste old snippets with a couple of keystrokes.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📅</div>
+      <h3>Calendar</h3>
+      <p>See today's events and create new ones directly from the launcher — talks to the OS calendar natively.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎙️</div>
+      <h3>Dictate</h3>
+      <p>Speak instead of typing. The transcript is pasted into whatever app had focus — or straight into the agent.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <h3>AI agent</h3>
+      <p>A multi-turn agent with streamed output. Bring your own OpenAI-compatible API key and base URL.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔄</div>
+      <h3>Launch at login</h3>
+      <p>Installed once, always there. Supacast registers itself to start automatically when your system boots.</p>
+    </div>
+  </div>
+</section>
+
+<section class="cta-band">
+  <h2>Ready in one command</h2>
+  <p>Install it, hit <code>⌘⇧Y</code>, and never touch the mouse again.</p>
+  <a class="btn btn-primary" href="{{ get_url(path='/installation/') }}">Get Supacast →</a>
+</section>
+
+<script>
+  (function () {
+    var buttons = document.querySelectorAll('.tab-btn');
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        buttons.forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(function (panel) {
+          var active = panel.id === btn.dataset.tab;
+          panel.classList.toggle('active', active);
+          panel.hidden = !active;
+        });
+      });
+    });
+  })();
+</script>
+{% endblock %}
