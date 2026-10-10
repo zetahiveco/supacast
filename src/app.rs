@@ -185,6 +185,12 @@ pub struct App {
     pub clips: Vec<ClipEntry>,
     pub dictations: Vec<Dictation>,
     pub sel_note: Option<String>,
+    /// Note currently being edited inline (its id) + the edit buffer.
+    pub editing_note: Option<String>,
+    pub edit_note_text: String,
+    /// Copy feedback: (note id, time copied) — the Copy button reads
+    /// "Copied" for 2s after a copy, then reverts.
+    pub copied_note: Option<(String, Instant)>,
     pub sel_dict: Option<String>,
     pub chat: Vec<ChatTurn>,
     pub chat_busy: bool,
@@ -200,8 +206,13 @@ pub struct App {
     pub set_api_key: String,
     pub set_base_url: String,
     pub set_model: String,
+    /// Draft of the reminder-repeat frequency (None = Never).
+    pub set_remind_repeat: Option<u64>,
     pub shortcut_recording: bool,
     pub settings_status: SettingsStatus,
+    /// When the "Send test notification" button was last clicked (drives
+    /// the 2s "Sent ✓" feedback).
+    pub test_notify_at: Option<std::time::Instant>,
     /// Window height the settings view last asked for (auto-size to fit the
     /// content, no scrolling). 0 = nothing sent yet.
     pub settings_window_h: f32,
@@ -269,6 +280,14 @@ impl eframe::App for App {
         if !self.started {
             self.started = true;
             self.apply_window_mode(ctx);
+            // One-time Dock icon (the process is a bare binary — without
+            // this the Dock shows the generic executable icon).
+            #[cfg(target_os = "macos")]
+            if let Err(e) = crate::platform::macos::set_dock_icon(include_bytes!(
+                "../assets/rocket-icon-512.png"
+            )) {
+                eprintln!("dock icon not set: {e}");
+            }
         }
         // Retry any window-mode transition that was deferred until the
         // monitor size became available.
@@ -428,6 +447,9 @@ impl App {
             clips: Vec::new(),
             dictations: Vec::new(),
             sel_note: None,
+            editing_note: None,
+            edit_note_text: String::new(),
+            copied_note: None,
             sel_dict: None,
             chat: Vec::new(),
             chat_busy: false,
@@ -438,7 +460,9 @@ impl App {
             set_api_key: s.openai_api_key.clone(),
             set_base_url: s.chat_base_url.clone(),
             set_model: s.chat_model.clone(),
+            set_remind_repeat: s.remind_repeat_min,
             shortcut_recording: false,
+            test_notify_at: None,
             settings_status: SettingsStatus::Idle,
             settings_window_h: 0.0,
             quitting: false,
@@ -518,6 +542,7 @@ impl App {
                 self.set_api_key = s.openai_api_key.clone();
                 self.set_base_url = s.chat_base_url.clone();
                 self.set_model = s.chat_model.clone();
+                self.set_remind_repeat = s.remind_repeat_min;
                 self.settings_status = SettingsStatus::Idle;
                 self.settings_open = true;
                 self.apply_window_mode(ctx);
@@ -905,6 +930,8 @@ impl App {
         self.notes = notes::list(Some(query));
         self.active = 0;
         self.sel_note = None;
+        self.editing_note = None;
+        self.edit_note_text.clear();
     }
 
     pub fn load_dictations(&mut self) {
@@ -1257,6 +1284,7 @@ impl App {
             .trim_end_matches('/')
             .to_string();
         current.chat_model = self.set_model.trim().to_string();
+        current.remind_repeat_min = self.set_remind_repeat;
 
         match settings::save(&current) {
             Ok(()) => {

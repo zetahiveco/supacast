@@ -51,6 +51,17 @@ pub fn delete(id: &str) -> Result<(), String> {
     save_all(&notes)
 }
 
+/// Replace the text of an existing note (keeps id + creation time).
+pub fn update(id: &str, text: &str) -> Result<(), String> {
+    let mut notes = load_all();
+    let note = notes
+        .iter_mut()
+        .find(|n| n.id == id)
+        .ok_or_else(|| format!("no note with id {id}"))?;
+    note.text = text.trim().to_string();
+    save_all(&notes)
+}
+
 /// List notes, newest first. Optional `query` filters by substring.
 pub fn list(query: Option<&str>) -> Vec<Note> {
     let q = query.map(|s| s.trim().to_lowercase()).unwrap_or_default();

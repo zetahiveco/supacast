@@ -24,6 +24,38 @@ pub struct Settings {
     /// Chat model id, e.g. "gpt-5-mini" (Ollama/OpenRouter/OpenAI).
     #[serde(default = "default_chat_model")]
     pub chat_model: String,
+    /// How often an overdue, incomplete todo re-notifies until done, in
+    /// minutes. `None` = notify once, never repeat. Default 30.
+    #[serde(default = "default_remind_repeat")]
+    pub remind_repeat_min: Option<u64>,
+}
+
+fn default_remind_repeat() -> Option<u64> {
+    Some(30)
+}
+
+/// The repeat-frequency choices offered in Settings: (label, minutes).
+/// minutes == 0 means "notify once, never repeat".
+pub const REPEAT_OPTIONS: [(&str, u64); 7] = [
+    ("10 min", 10),
+    ("15 min", 15),
+    ("30 min", 30),
+    ("45 min", 45),
+    ("1 hour", 60),
+    ("2 hours", 120),
+    ("Never", 0),
+];
+
+/// Label for a `remind_repeat_min` value ("10 min" … "2 hours", "Never").
+pub fn repeat_label(mins: Option<u64>) -> &'static str {
+    match mins {
+        None | Some(0) => "Never",
+        Some(m) => REPEAT_OPTIONS
+            .iter()
+            .find(|(_, v)| *v == m)
+            .map(|(l, _)| *l)
+            .unwrap_or("30 min"),
+    }
 }
 
 fn default_chat_base_url() -> String {
@@ -41,6 +73,7 @@ impl Default for Settings {
             openai_api_key: String::new(),
             chat_base_url: default_chat_base_url(),
             chat_model: default_chat_model(),
+            remind_repeat_min: default_remind_repeat(),
         }
     }
 }

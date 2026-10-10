@@ -3,6 +3,7 @@
 
 use chrono::{Local, TimeZone};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense};
+use std::time::{Duration, Instant};
 
 use crate::app::{App, ChatTurn, View};
 use crate::events::DictateMode;
@@ -18,6 +19,10 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
     if moved {
         app.mouse_moved = true;
     }
+
+    // While a note is being edited inline the search bar steps aside: the
+    // editor owns the keyboard, so nothing must compete for focus.
+    let editing_note = matches!(app.view, View::Notes { .. }) && app.editing_note.is_some();
 
     // -------------------------------------------------------------
     // Search row
@@ -58,32 +63,40 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
 
         // Reserve room for the Clear button only — the input width must
         // not depend on whether a search is running.
-        let mut reserve = 14.0;
-        if in_chat && !app.chat.is_empty() {
-            reserve += 60.0; // Clear button
-        }
-        let available = ui.available_width() - reserve;
-        let response = ui.add_sized(
-            [available, SEARCH_ROW_H],
-            egui::TextEdit::singleline(&mut app.query)
-                .hint_text(hint)
-                .font(egui::TextStyle::Heading)
-                .vertical_align(egui::Align::Center)
-                .frame(egui::Frame::NONE),
-        );
-        if app.need_focus {
-            response.request_focus();
-            app.need_focus = false;
-        }
+        if editing_note {
+            ui.add(egui::Label::new(
+                egui::RichText::new("Editing note — Enter saves, Esc cancels")
+                    .size(14.0)
+                    .color(SUBTEXT),
+            ));
+        } else {
+            let mut reserve = 14.0;
+            if in_chat && !app.chat.is_empty() {
+                reserve += 60.0; // Clear button
+            }
+            let available = ui.available_width() - reserve;
+            let response = ui.add_sized(
+                [available, SEARCH_ROW_H],
+                egui::TextEdit::singleline(&mut app.query)
+                    .hint_text(hint)
+                    .font(egui::TextStyle::Heading)
+                    .vertical_align(egui::Align::Center)
+                    .frame(egui::Frame::NONE),
+            );
+            if app.need_focus {
+                response.request_focus();
+                app.need_focus = false;
+            }
 
-        // Clear pinned to the right edge of the row, always in the same
-        // spot whether or not a search is running.
-        if in_chat && !app.chat.is_empty() {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("Clear").clicked() {
-                    app.clear_chat();
-                }
-            });
+            // Clear pinned to the right edge of the row, always in the same
+            // spot whether or not a search is running.
+            if in_chat && !app.chat.is_empty() {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("Clear").clicked() {
+                        app.clear_chat();
+                    }
+                });
+            }
         }
     });
 
@@ -129,6 +142,32 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
         }
         draw_chat(app, ui);
         return;
+    }
+
+    // Inline note editing owns the keyboard: Enter saves, Esc cancels, the
+    // caret moves with the arrows (no list navigation while typing).
+    if let View::Notes { query } = &app.view {
+        if app.editing_note.is_some() {
+            let id = app.editing_note.clone().unwrap();
+            let query = query.clone();
+            if esc {
+                app.editing_note = None;
+                app.edit_note_text.clear();
+            } else if enter {
+                let text = std::mem::take(&mut app.edit_note_text);
+                crate::notes::update(&id, &text).ok();
+                app.editing_note = None;
+                let keep = app.sel_note.clone();
+                app.load_notes(&query);
+                app.sel_note = keep;
+                if let Some(idx) = app.notes.iter().position(|n| n.id == id) {
+                    app.active = idx;
+                }
+            }
+            app.need_focus = false;
+            draw_notes(app, ui, &query);
+            return;
+        }
     }
 
     // Length of the active list (for arrow navigation).
@@ -180,13 +219,15 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
             View::Notes { .. } => {
-                // Enter expands the selected note.
+                // Enter on a collapsed note expands it; on an already
+                // expanded note it starts an inline edit of the text.
                 if let Some(n) = app.notes.get(app.active).cloned() {
-                    app.sel_note = if app.sel_note.as_deref() == Some(n.id.as_str()) {
-                        None
+                    if app.sel_note.as_deref() == Some(n.id.as_str()) {
+                        app.editing_note = Some(n.id.clone());
+                        app.edit_note_text = n.text.clone();
                     } else {
-                        Some(n.id)
-                    };
+                        app.sel_note = Some(n.id);
+                    }
                 }
             }
             View::Clipboard => {
@@ -236,27 +277,34 @@ fn draw_search(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
 
-    // Empty query → the list below is the command reference; label it.
-    let commands = app.query.trim().is_empty();
-    if commands {
-        ui.add_space(8.0);
-        ui.add(egui::Label::new(
-            egui::RichText::new("COMMANDS").small().color(SUBTEXT),
-        ));
-        ui.add_space(2.0);
-    }
-
+    // Empty query → the list below is pending todos + the command
+    // reference; label the sections.
+    let empty_query = app.query.trim().is_empty();
     let scroll = egui::ScrollArea::vertical().auto_shrink(false);
     scroll.show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
+        let mut last_kind = "";
         for (i, item) in all.iter().enumerate() {
+            // Section headers: "TODOS" above the first todo row, "COMMANDS"
+            // above the first command row (only with an empty query).
+            if empty_query && item.kind != last_kind {
+                let header = if item.kind == "todo" { "TODOS" } else { "COMMANDS" };
+                ui.add_space(8.0);
+                ui.add(egui::Label::new(
+                    egui::RichText::new(header).small().color(SUBTEXT),
+                ));
+                ui.add_space(2.0);
+                last_kind = &item.kind;
+            }
             let badge_color = match item.kind.as_str() {
+                "todo" => ACCENT,
                 "app" if item.path.starts_with("__") => PURPLE,
                 "app" => ACCENT,
                 "folder" => GREEN,
                 _ => SUBTEXT,
             };
             let badge = match item.kind.as_str() {
+                "todo" => "Todo",
                 "app" if item.path.starts_with("__ask__") || item.path == "__chat__" => "AI",
                 "app" if item.path.starts_with("__dictate") => "Mic",
                 "app" if item.path.starts_with("__view_") => "Open",
@@ -285,10 +333,12 @@ fn suggestions(app: &App) -> Vec<SearchResult> {
     if app.view != View::Search {
         return out;
     }
-    // Empty search bar: list every built-in command with a one-line
-    // description instead of the old single hint line.
+    // Empty search bar: incomplete todos first, then every built-in
+    // command with a one-line description.
     if q.is_empty() {
-        return builtin_commands();
+        let mut out = pending_todo_rows(app);
+        out.extend(builtin_commands());
+        return out;
     }
     let lower = q.to_lowercase();
 
@@ -407,6 +457,45 @@ fn builtin_commands() -> Vec<SearchResult> {
             kind: "app".into(),
         },
     ]
+}
+
+/// Incomplete todos shown above the command list when the search bar is
+/// empty — soonest-due first, undated last. Capped so a long list can't
+/// push the command reference out of reach; the overflow becomes a single
+/// "open Todos" row.
+fn pending_todo_rows(app: &App) -> Vec<SearchResult> {
+    const MAX_SHOWN: usize = 5;
+
+    let mut pending: Vec<&crate::todos::Todo> = app.todos.iter().filter(|t| !t.done).collect();
+    // Dated todos first (soonest due at the top), undated after. The sort
+    // is stable so ties keep their saved order.
+    pending.sort_by_key(|t| t.due.is_none());
+
+    let total = pending.len();
+    let mut rows: Vec<SearchResult> = pending
+        .into_iter()
+        .take(MAX_SHOWN)
+        .map(|t| SearchResult {
+            title: t.text.clone(),
+            subtitle: {
+                let s = crate::app::fmt_due(t.due);
+                if s.is_empty() { "No due date".into() } else { s }
+            },
+            path: "__view_todos__".into(),
+            kind: "todo".into(),
+        })
+        .collect();
+
+    let hidden = total - rows.len();
+    if hidden > 0 {
+        rows.push(SearchResult {
+            title: format!("+{hidden} more todo{plural}", plural = if hidden == 1 { "" } else { "s" }),
+            subtitle: "Open Todos to see everything".into(),
+            path: "__view_todos__".into(),
+            kind: "todo".into(),
+        });
+    }
+    rows
 }
 
 /// Case-insensitively strip a prefix that must be followed by whitespace,
@@ -739,21 +828,83 @@ fn draw_notes(app: &mut App, ui: &mut egui::Ui, query: &str) {
                 break;
             }
             if clicked {
+                if selected {
+                    // Collapsing a note also cancels its inline edit.
+                    app.editing_note = None;
+                    app.edit_note_text.clear();
+                }
                 app.sel_note = if selected { None } else { Some(n.id.clone()) };
                 break;
             }
             if selected {
-                // Full text + copy action.
+                // Pin the expanded panel to exactly the row width (same
+                // trick as the dictations panel): claim the content width
+                // (row width minus the frame's 8px margins on each side)
+                // as both min and max, so the fill always spans the full
+                // row — never narrower (content wrap) or wider (overflow).
+                let row_w = ui.available_width();
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 12))
                     .inner_margin(egui::Margin::same(8))
                     .show(ui, |ui| {
-                        ui.set_max_width(ui.available_width());
-                        ui.add(egui::Label::new(
-                            egui::RichText::new(&n.text).size(13.5).color(TEXT),
-                        ).wrap());
-                        if ui.small_button("⧉ Copy").clicked() {
-                            copy_clip_and_hide(app, &n.text);
+                        ui.set_min_width(row_w - 16.0);
+                        ui.set_max_width(row_w - 16.0);
+                        if app.editing_note.as_deref() == Some(n.id.as_str()) {
+                            // Inline editor, transparent frame so it blends
+                            // with the expanded panel background.
+                            let editor = ui.add(
+                                egui::TextEdit::multiline(&mut app.edit_note_text)
+                                    .font(egui::FontId::proportional(13.5))
+                                    .desired_width(ui.available_width())
+                                    .frame(egui::Frame::NONE)
+                                    .return_key(egui::KeyboardShortcut::new(
+                                        egui::Modifiers::SHIFT,
+                                        egui::Key::Enter,
+                                    )),
+                            );
+                            if !editor.has_focus() {
+                                editor.request_focus();
+                            }
+                            ui.add_space(4.0);
+                            ui.add(egui::Label::new(
+                                egui::RichText::new(
+                                    "Enter to save • Shift+Enter for a new line • Esc to cancel",
+                                )
+                                .small()
+                                .color(SUBTEXT),
+                            ));
+                        } else {
+                            // Full text + copy action. Copying keeps the
+                            // launcher open: the button reads "Copied" for
+                            // 2s, then reverts to "Copy".
+                            ui.add(egui::Label::new(
+                                egui::RichText::new(&n.text).size(13.5).color(TEXT),
+                            ).wrap());
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                let copied_until = app
+                                    .copied_note
+                                    .as_ref()
+                                    .filter(|(id, _)| id == n.id.as_str())
+                                    .map(|(_, at)| *at + Duration::from_secs(2));
+                                let copied = copied_until
+                                    .is_some_and(|until| Instant::now() < until);
+                                let btn = ui.add(egui::Button::new(
+                                    egui::RichText::new(if copied { "Copied ✓" } else { "Copy" })
+                                        .color(if copied { GREEN } else { TEXT }),
+                                ));
+                                // Keep repainting until the label reverts.
+                                if let Some(until) = copied_until.filter(|_| copied) {
+                                    ui.ctx().request_repaint_after(
+                                        until.saturating_duration_since(Instant::now()),
+                                    );
+                                }
+                                if btn.clicked()
+                                    && crate::clipboard_hist::copy_to_clipboard(&n.text).is_ok()
+                                {
+                                    app.copied_note = Some((n.id.clone(), Instant::now()));
+                                }
+                            });
                         }
                     });
             }

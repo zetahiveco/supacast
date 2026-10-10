@@ -14,8 +14,8 @@ use crate::ui::{ACCENT, ACCENT_DIM, GREEN, RED, SUBTEXT, TEXT};
 
 /// Fixed settings window width (logical px).
 const SETTINGS_W: f32 = 560.0;
-/// Max window height (keeps the window on screen even with long content).
-const MAX_H: f32 = 720.0;
+/// Fixed window height — content scrolls; the window never resizes.
+const SETTINGS_H: f32 = 640.0;
 
 /// Input field surface: --panel rgba(255,255,255,0.06).
 const INPUT_BG: egui::Color32 = egui::Color32::from_rgba_unmultiplied_const(255, 255, 255, 15);
@@ -31,14 +31,18 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
     }
 
     // NOTE: `draw` runs inside the root CentralPanel (app.rs applies
-    // settings_frame). Nested panels don't anchor to the window edges, so
-    // everything below is plain flow layout — the footer just follows the
-    // content, and the window auto-sizes so it sits at the bottom.
-    //
-    // Everything is wrapped in one vertical child-ui whose rect is measured
-    // for the auto-size. (The root panel ui's min_rect tracks the *window*
-    // size, which would feed the sizer a growing value every frame.)
+    // settings_frame). The window is a fixed size; the fields live in a
+    // scroll area and the footer stays pinned to the bottom.
     let body = ui.vertical(|ui| {
+        // Reserve room for the pinned footer (space + separator + space +
+        // 30px buttons + space + item spacing) so it never scrolls out of
+        // view — `auto_shrink(false)` alone would eat the full height.
+        const FOOTER_H: f32 = 56.0;
+        let scroll_h = (ui.available_height() - FOOTER_H).max(120.0);
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .max_height(scroll_h)
+            .show(ui, |ui| {
         egui::Frame::new()
             .inner_margin(egui::Margin {
                 left: 22,
@@ -85,6 +89,73 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
                 input(ui, &mut app.set_model, "gpt-5-mini", false);
             });
 
+            // ---- Reminder repeat frequency ----
+            field(
+                ui,
+                "Todo reminder frequency",
+                "An overdue, incomplete todo re-notifies at this interval until you check it off. “Never” notifies once.",
+                |ui| {
+                    let label = settings_store::repeat_label(app.set_remind_repeat);
+                    // Restyle the combo-box button to match the text inputs
+                    // above: dark panel fill, hairline border, sharp
+                    // corners, accent border while open/hovered.
+                    let restyle = |state: &mut egui::style::WidgetVisuals, border: egui::Color32| {
+                        state.weak_bg_fill = INPUT_BG;
+                        state.bg_fill = INPUT_BG;
+                        state.fg_stroke = egui::Stroke::new(1.0, TEXT);
+                        state.bg_stroke = egui::Stroke::new(1.0, border);
+                        state.corner_radius = egui::CornerRadius::ZERO;
+                    };
+                    let w = &mut ui.style_mut().visuals.widgets;
+                    restyle(&mut w.inactive, INPUT_BORDER);
+                    restyle(&mut w.hovered, ACCENT);
+                    restyle(&mut w.open, ACCENT);
+                    restyle(&mut w.active, ACCENT);
+                    // Same height as the text inputs / shortcut button above
+                    // (the combo button sizes from interact_size.y).
+                    ui.spacing_mut().interact_size.y = 34.0;
+                    egui::ComboBox::from_id_salt("remind_repeat")
+                        .selected_text(egui::RichText::new(label).color(TEXT))
+                        .width(ui.available_width())
+                        .truncate()
+                        .show_ui(ui, |ui| {
+                            for (name, mins) in settings_store::REPEAT_OPTIONS {
+                                let value = if mins == 0 { None } else { Some(mins) };
+                                ui.selectable_value(
+                                    &mut app.set_remind_repeat,
+                                    value,
+                                    name,
+                                );
+                            }
+                        });
+                },
+            );
+
+            // ---- Notifications (test delivery) ----
+            field(ui, "Notifications", "Send a test notification — if no banner pops up, check System Settings → Notifications (and that Focus is off).", |ui| {
+                let sent = app
+                    .test_notify_at
+                    .is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(2));
+                let label = if sent { "Sent ✓" } else { "Send test notification" };
+                let btn = egui::Button::new(egui::RichText::new(label).color(
+                    if sent { ACCENT_DIM } else { TEXT },
+                ))
+                .fill(INPUT_BG)
+                .stroke(egui::Stroke::new(1.0, if sent { ACCENT } else { INPUT_BORDER }))
+                .corner_radius(0.0)
+                .min_size(egui::vec2(ui.available_width(), 34.0));
+                if ui.add(btn).clicked() {
+                    crate::platform::notify(
+                        "Supacast test",
+                        &format!(
+                            "Notifications are working — {}",
+                            chrono::Local::now().format("%-I:%M:%S %p"),
+                        ),
+                    );
+                    app.test_notify_at = Some(std::time::Instant::now());
+                }
+            });
+
             // ---- Microphone status (dictate needs TCC permission) ----
             field(ui, "Microphone", "Needed for the dictate ring. If dictations come back empty, grant Supacast access.", |ui| {
                 let granted = mic_permission_granted();
@@ -124,6 +195,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
             }); // content frame
+        }); // scroll area
 
         // ---- Footer: full-width separator, hint on the left, buttons right ----
         ui.add_space(4.0);
@@ -160,25 +232,25 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(4.0);
     }); // body vertical
 
-    // ---- Auto-size the window to the content (no scrolling) ----
-    // The root frame adds its own margin around everything drawn here.
-    let h = body.response.rect.height() + 30.0;
-    let h = h.min(MAX_H);
-    if (h - app.settings_window_h).abs() > 1.0 {
-        let first_size = app.settings_window_h == 0.0;
-        app.settings_window_h = h;
-        eprintln!("[settings] auto-size -> {h:.0}");
+    // ---- Fixed window size ----
+    // Enforce the fixed size every frame: re-opening settings from the
+    // launcher mode (a differently-sized viewport) needs it re-applied.
+    // The position is re-centered only when the size was wrong (i.e. once
+    // per open) so saving never moves the window.
+    let want = egui::vec2(SETTINGS_W, SETTINGS_H);
+    let current = ui
+        .ctx()
+        .input(|i| i.viewport().inner_rect.map(|r| r.size()));
+    if current != Some(want) {
+        app.settings_window_h = SETTINGS_H;
         let ctx = ui.ctx();
-        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(SETTINGS_W, h)));
-        // Center only on the first sizing. Later content changes (the
-        // "Settings updated" note after Save, error messages) must not
-        // move the window — that re-centering made Save jump the window.
-        if first_size {
-            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(
-                app.center_pos((SETTINGS_W, h)),
-            ));
-        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want));
+        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(
+            app.center_pos((SETTINGS_W, SETTINGS_H)),
+        ));
     }
+    // Keep `body` used: the fixed window no longer measures content.
+    let _ = body;
 
     // Capture the next key combo while recording.
     if app.shortcut_recording {

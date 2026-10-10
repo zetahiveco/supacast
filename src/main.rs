@@ -71,7 +71,7 @@ fn main() {
     });
 
     // --- Background loops ---
-    todos::spawn_reminder_loop();
+    todos::spawn_reminder_loop(shared.clone());
     clipboard_hist::spawn_clipboard_loop();
 
     // Microphone check at launch: if the default input yields no audio
@@ -92,6 +92,13 @@ fn main() {
     // Supacast always starts with the system after install; the plugin is
     // idempotent so re-enabling on every launch is safe.
     platform::enable_autostart();
+
+    // Startup hello: confirms the reminder/notify pipeline is alive each
+    // time the app launches (also pre-builds the notifier applet).
+    platform::notify(
+        "Supacast is running",
+        "You will receive notifications and remainders from the app",
+    );
 
     // Menu-bar-only app on macOS: no dock icon, lives in the tray.
     #[cfg(target_os = "macos")]
