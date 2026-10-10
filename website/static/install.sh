@@ -30,6 +30,10 @@ RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest
 ASSET_URLS="$(printf '%s' "$RELEASE_JSON" | grep -oE '"browser_download_url":\s*"[^"]+"' | cut -d'"' -f4)"
 [ -n "$ASSET_URLS" ] || error "No release assets found."
 
+# Release version (for the app bundle's version fields), e.g. v0.2.1 -> 0.2.1.
+TAG="$(printf '%s' "$RELEASE_JSON" | grep -m1 -oE '"tag_name":\s*"[^"]+"' | cut -d'"' -f4)"
+VERSION="${TAG#v}"
+
 ASSET_URL=""
 if [ "$PLATFORM" = "darwin" ]; then
   if [ "$ARCH" = "arm64" ]; then
@@ -69,20 +73,78 @@ install_binary() {
 
 case "$PLATFORM" in
   darwin)
-    if [ -w /usr/local/bin ]; then
-      install_binary "/usr/local/bin/supacast"
+    # ---- Build Supacast.app: a real bundle so the app shows up in Finder
+    # (/Applications), gets its rocket icon in Spotlight/Dock/notifications,
+    # and macOS attributes permissions + notifications to the app itself.
+    APP_DIR="${TMP_DIR}/Supacast.app"
+    mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+    mv "$TMP_DIR/supacast" "$APP_DIR/Contents/MacOS/supacast"
+    chmod +x "$APP_DIR/Contents/MacOS/supacast"
+    printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
+
+    cat > "$APP_DIR/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key><string>supacast</string>
+    <key>CFBundleIdentifier</key><string>com.supacast.app</string>
+    <key>CFBundleName</key><string>Supacast</string>
+    <key>CFBundleDisplayName</key><string>Supacast</string>
+    <key>CFBundleIconFile</key><string>Supacast</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleVersion</key><string>${VERSION:-1.0.0}</string>
+    <key>CFBundleShortVersionString</key><string>${VERSION:-1.0.0}</string>
+    <key>LSMinimumSystemVersion</key><string>12.0</string>
+    <key>NSMicrophoneUsageDescription</key><string>Supacast uses the microphone for the dictate feature.</string>
+    <key>NSHumanReadableCopyright</key><string>Copyright © 2026 harishdeivanayagam. All rights reserved.</string>
+</dict>
+</plist>
+PLIST
+
+    # Rocket icon (served from this site). Cosmetic — skip on failure.
+    if curl -fsSL --speed-limit 1024 --speed-time 30 \
+         "https://supacast-omega.vercel.app/Supacast.icns" \
+         -o "$APP_DIR/Contents/Resources/Supacast.icns" 2>/dev/null; then
+      info "Added rocket app icon."
+    fi
+
+    # Install into /Applications (admin users can write it directly; else sudo;
+    # fall back to ~/Applications if the user declines sudo).
+    if [ -w /Applications ] || sudo -n true 2>/dev/null; then
+      if [ -w /Applications ]; then
+        mv "$APP_DIR" /Applications/ || error "Could not install to /Applications."
+      else
+        sudo mv "$APP_DIR" /Applications/ || error "Could not install to /Applications."
+      fi
+      APP_DIR="/Applications/Supacast.app"
+    else
+      if sudo mv "$APP_DIR" /Applications/ 2>/dev/null; then
+        APP_DIR="/Applications/Supacast.app"
+      else
+        mkdir -p "$HOME/Applications"
+        mv "$APP_DIR" "$HOME/Applications/" || error "Could not install the app bundle."
+        APP_DIR="$HOME/Applications/Supacast.app"
+      fi
+    fi
+
+    # The binary is installed via curl, so Gatekeeper's "damaged" quarantine
+    # stamp is never applied — but strip any xattrs anyway to be safe.
+    xattr -cr "$APP_DIR" 2>/dev/null || true
+
+    # Keep a `supacast` command on PATH (symlink into the bundle).
+    if [ -w /usr/local/bin ] || [ -w /usr/local 2>/dev/null ]; then
+      ln -sfn "$APP_DIR/Contents/MacOS/supacast" /usr/local/bin/supacast 2>/dev/null \
+        || sudo ln -sfn "$APP_DIR/Contents/MacOS/supacast" /usr/local/bin/supacast
     else
       mkdir -p "$HOME/.local/bin"
-      install_binary "$HOME/.local/bin/supacast"
+      ln -sfn "$APP_DIR/Contents/MacOS/supacast" "$HOME/.local/bin/supacast"
       case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
         *) info "Note: add $HOME/.local/bin to your PATH to run 'supacast'." ;;
       esac
     fi
-    # The binary is installed via curl, so Gatekeeper's "damaged" quarantine
-    # stamp is never applied — but strip any xattrs anyway to be safe.
-    xattr -cr "$HOME/.local/bin/supacast" 2>/dev/null || true
-    xattr -cr /usr/local/bin/supacast 2>/dev/null || true
     ;;
   linux)
     if [ -w /usr/local/bin ]; then
@@ -103,8 +165,9 @@ printf '\033[1;32m✔ Supacast installed successfully!\033[0m\n'
 printf '\n'
 case "$PLATFORM" in
   darwin)
-    printf '  Run "supacast" to start it — look for the menu-bar rocket icon.\n'
-    printf '  Launch it once so it registers the global shortcut.\n'
+    printf '  Supacast is installed in /Applications (drag to Trash to uninstall).\n'
+    printf '  Starting it now — look for the menu-bar rocket icon.\n'
+    open "$APP_DIR" 2>/dev/null || printf '  Run "supacast" or double-click Supacast.app to start it.\n'
     ;;
   linux)
     printf '  Run "supacast" to start it — look for the tray rocket icon.\n'

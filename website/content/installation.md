@@ -14,9 +14,11 @@ curl -fsSL https://supacast-omega.vercel.app/install.sh | bash
 ```
 
 The script downloads the latest release from
-[GitHub Releases](https://github.com/zetahiveco/supacast/releases), installs
-the `supacast` binary to `/usr/local/bin` (or `~/.local/bin` if that needs
-root) and strips any quarantine flags so it opens normally.
+[GitHub Releases](https://github.com/zetahiveco/supacast/releases) and installs
+**Supacast.app** into `/Applications` (falling back to `~/Applications` if
+needed), with the rocket app icon. It also symlinks a `supacast` command into
+`/usr/local/bin` (or `~/.local/bin`) so you can launch it from the terminal,
+and strips any quarantine flags so it opens normally.
 
 ### Windows (PowerShell)
 
@@ -47,8 +49,8 @@ Prefer to install by hand? Grab the right asset from the
 
 | Platform | Asset | Action |
 |----------|-------|--------|
-| macOS (Apple Silicon) | `supacast-aarch64-apple-darwin.tar.gz` | Extract and move `supacast` to `/usr/local/bin` |
-| macOS (Intel) | `supacast-x86_64-apple-darwin.tar.gz` | Extract and move `supacast` to `/usr/local/bin` |
+| macOS (Apple Silicon) | `supacast-aarch64-apple-darwin.tar.gz` | Extract the binary into a `Supacast.app` bundle in `/Applications` (the one-line install builds this for you) |
+| macOS (Intel) | `supacast-x86_64-apple-darwin.tar.gz` | Same as above |
 | Windows | `supacast-x86_64-pc-windows-msvc.zip` | Extract `supacast.exe` anywhere on your PATH |
 | Linux | `supacast-x86_64-unknown-linux-gnu.tar.gz` | Extract and move `supacast` to `/usr/local/bin` |
 
@@ -56,15 +58,17 @@ Prefer to install by hand? Grab the right asset from the
 > quarantine flag — remove the flag and it opens normally:
 >
 > ```sh
-> xattr -cr /usr/local/bin/supacast
+> xattr -cr /Applications/Supacast.app
 > ```
 >
 > The `curl | bash` one-line install does this for you automatically.
 
 ## Uninstall
 
-- **macOS**: quit from the tray menu, then delete `/usr/local/bin/supacast`.
-  Remove `~/Library/LaunchAgents/com.supacast.app.plist` to stop launch-at-login.
+- **macOS**: quit from the tray menu, then drag `Supacast.app` from
+  `/Applications` to the Trash. Also delete the `supacast` symlink from
+  `/usr/local/bin` (if present) and
+  `~/Library/LaunchAgents/com.supacast.app.plist` to stop launch-at-login.
 - **Windows**: delete `%LOCALAPPDATA%\Programs\Supacast`, remove the
   `Supacast` entry from the registry `Run` key and your user PATH.
 - **Linux**: delete the `supacast` binary from `/usr/local/bin` or `~/.local/bin`.
