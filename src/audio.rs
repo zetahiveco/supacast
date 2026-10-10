@@ -234,11 +234,10 @@ impl PlaybackHandle {
     }
 }
 
-/// Play 16-bit PCM WAV bytes on the default output device.
-pub fn play_wav(wav: &[u8]) -> Result<PlaybackHandle, String> {
+/// Play raw mono samples at `rate` on the default output device.
+pub fn play_samples(samples: Vec<f32>, rate: u32) -> Result<PlaybackHandle, String> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-    let (samples, rate) = decode_wav(wav)?;
     let total_samples = samples.len();
     let pos = Arc::new(AtomicU64::new(0.0f64.to_bits()));
     let stop = Arc::new(AtomicBool::new(false));
@@ -319,4 +318,95 @@ pub fn play_wav(wav: &[u8]) -> Result<PlaybackHandle, String> {
         total_samples,
         sample_rate: rate,
     })
+}
+
+/// Decode a saved recording to mono f32 + sample rate, whatever container it
+/// is: WAV recordings from this app take the fast hand-rolled path, m4a/aac
+/// (and mp3/ogg) recordings from the old Tauri app go through `symphonia`.
+pub fn decode_audio(bytes: &[u8]) -> Result<(Vec<f32>, u32), String> {
+    match decode_wav(bytes) {
+        // Our own recordings are always 16-bit PCM WAV.
+        Ok(out) => Ok(out),
+        // Not a RIFF file — probe the actual container/codec by content.
+        Err(_) => symphonia_decode(bytes),
+    }
+}
+
+/// Decode any `symphonia`-supported recording (m4a/aac, mp3, ogg/vorbis,
+/// flac) to mono f32 + sample rate.
+fn symphonia_decode(bytes: &[u8]) -> Result<(Vec<f32>, u32), String> {
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::codecs::CODEC_TYPE_NULL;
+    use symphonia::core::errors::Error as SyncError;
+    use symphonia::core::io::MediaSourceStream;
+
+    let mss = MediaSourceStream::new(
+        Box::new(std::io::Cursor::new(bytes.to_vec())),
+        Default::default(),
+    );
+    let probed = symphonia::default::get_probe()
+        .format(
+            &Default::default(),
+            mss,
+            &Default::default(),
+            &Default::default(),
+        )
+        .map_err(|e| format!("unsupported recording: {e}"))?;
+    let mut format = probed.format;
+
+    let track = format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+        .ok_or("recording has no audio track")?
+        .clone();
+    let track_id = track.id;
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &Default::default())
+        .map_err(|e| format!("unsupported codec: {e}"))?;
+
+    let mut rate = track.codec_params.sample_rate.unwrap_or(44100) as u32;
+    let mut out: Vec<f32> = Vec::new();
+
+    loop {
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            // End of stream is reported as an EOF io error.
+            Err(SyncError::IoError(ref e))
+                if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+            {
+                break
+            }
+            Err(e) => return Err(format!("decode failed: {e}")),
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+        match decoder.decode(&packet) {
+            Ok(buf) => {
+                let spec = *buf.spec();
+                rate = spec.rate;
+                let mut sbuf = SampleBuffer::<f32>::new(buf.capacity() as u64, spec);
+                sbuf.copy_interleaved_ref(buf);
+                let ch = spec.channels.count().max(1);
+                let samples = sbuf.samples();
+                match ch {
+                    1 => out.extend_from_slice(samples),
+                    _ => out.extend(
+                        samples
+                            .chunks_exact(ch)
+                            .map(|frame| frame.iter().sum::<f32>() / ch as f32),
+                    ),
+                }
+            }
+            // Skip corrupt packets instead of failing the whole recording.
+            Err(SyncError::DecodeError(_)) => continue,
+            Err(e) => return Err(format!("decode failed: {e}")),
+        }
+    }
+
+    if out.is_empty() {
+        return Err("recording contains no audio".into());
+    }
+    Ok((out, rate))
 }

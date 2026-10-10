@@ -28,6 +28,18 @@ base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 enigo = "0.3"
 cpal = "0.18"
+# Audio decoding for the dictation player: m4a/aac recordings from the old
+# Tauri app, plus mp3/ogg; wav stays on the hand-rolled decoder.
+symphonia = { version = "0.5", default-features = false, features = [
+    "aac",
+    "alac",
+    "isomp4",
+    "mp3",
+    "ogg",
+    "pcm",
+    "vorbis",
+    "wav",
+] }
 arboard = "3"
 notify-rust = "4"
 global-hotkey = "0.8"

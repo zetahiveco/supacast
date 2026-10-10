@@ -43,7 +43,15 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libatk1.0-dev libasound2-dev libdbus-1-dev libxkbcommon-dev pkg-config
 
       - name: Build release binary
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build --release --locked --target ${{ matrix.target }} 2>&1 | tee build.log
+
+      - name: Dump build log tail to step summary
+        if: failure()
+        shell: bash
+        run: tail -120 build.log >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
 
       - name: Package (macOS & Linux)
         if: runner.os != 'Windows'

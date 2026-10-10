@@ -1,3 +1,6 @@
 /target
 .DS_Store
 supacast-pure-single-instance
+website/public
+.vercel
+.DS_Store

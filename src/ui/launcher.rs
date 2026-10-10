@@ -837,20 +837,18 @@ fn fmt_secs(secs: f32) -> String {
 fn play_dictation(app: &mut App, id: &str) {
     app.stop_playback(); // never let two dictations overlap
     match crate::dictations::load_audio_bytes(id) {
-        Ok((bytes, mime)) => {
-            if mime.starts_with("audio/wav") {
-                match crate::audio::play_wav(&bytes) {
+        Ok((bytes, _mime)) => {
+            // wav (this app) and m4a/mp3/ogg (old Tauri app) all decode
+            // here — everything plays inline in the player.
+            match crate::audio::decode_audio(&bytes) {
+                Ok((samples, rate)) => match crate::audio::play_samples(samples, rate) {
                     Ok(handle) => {
                         app.playback = Some(handle);
                         app.playing_id = Some(id.to_string());
                     }
                     Err(e) => crate::platform::notify("Supacast", &format!("Playback failed: {e}")),
-                }
-            } else {
-                crate::platform::notify(
-                    "Supacast",
-                    "Playback is only supported for recordings made with this version.",
-                );
+                },
+                Err(e) => crate::platform::notify("Supacast", &format!("Playback failed: {e}")),
             }
         }
         Err(e) => crate::platform::notify("Supacast", &format!("Recording missing: {e}")),

@@ -1,0 +1,18 @@
+# Only the Zola website (website/) and vercel.json are needed to build the
+# site on Vercel — keep the app sources and build artifacts out of uploads.
+.git
+node_modules
+dist
+public
+src
+src-tauri
+.github
+.vscode
+target
+index.html
+package.json
+package-lock.json
+tsconfig.json
+tsconfig.node.json
+vite.config.ts
+*.log
