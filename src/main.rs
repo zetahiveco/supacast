@@ -73,11 +73,20 @@ fn main() {
     todos::spawn_reminder_loop();
     clipboard_hist::spawn_clipboard_loop();
 
-    // Ask for microphone access up front (TCC prompt on first launch).
-    // Without it, CoreAudio captures silence and dictation finds "Nothing
-    // heard".
-    #[cfg(target_os = "macos")]
-    platform::macos::request_mic_permission();
+    // Microphone check at launch: if the default input yields no audio
+    // (permission not granted yet, or denied — a denied permission captures
+    // a silent stream), fire the TCC prompt on macOS and notify. Without
+    // this, dictation just reports "Nothing heard".
+    std::thread::spawn(|| {
+        if !audio::probe_input(3000) {
+            #[cfg(target_os = "macos")]
+            platform::macos::request_mic_permission();
+            platform::notify(
+                "Supacast — no microphone input",
+                "Allow microphone access for Supacast (System Settings → Privacy & Security → Microphone) and relaunch.",
+            );
+        }
+    });
 
     // Supacast always starts with the system after install; the plugin is
     // idempotent so re-enabling on every launch is safe.

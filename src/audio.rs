@@ -80,6 +80,13 @@ impl Recorder {
         f32::from_bits(self.level.load(Ordering::Relaxed))
     }
 
+    /// Whether any non-zero sample has been captured so far. A denied mic
+    /// permission on macOS yields a running but completely silent stream,
+    /// so this is also the permission probe.
+    pub fn has_signal(&self) -> bool {
+        self.samples.lock().unwrap().iter().any(|&s| s != 0.0)
+    }
+
     /// Stop capturing and return the recorded samples. Dropping the cpal
     /// stream detaches from the mic.
     pub fn stop(mut self) -> (Vec<f32>, u32) {
@@ -91,6 +98,27 @@ impl Recorder {
 
 fn cpal_err(e: cpal::Error) -> String {
     format!("could not open mic stream: {e}")
+}
+
+/// Launch-time microphone check: opens the default input and waits up to
+/// `max_wait_ms` for any non-zero sample. Returns false when there is no
+/// input device, the stream fails, or the input stays silent (e.g. macOS
+/// microphone permission denied) — callers should ask for permission then.
+pub fn probe_input(max_wait_ms: u64) -> bool {
+    let Ok(rec) = Recorder::start() else {
+        return false;
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(max_wait_ms);
+    let mut ok = false;
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        if rec.has_signal() {
+            ok = true;
+            break;
+        }
+    }
+    drop(rec); // release the mic
+    ok
 }
 
 // ---------------------------------------------------------------------------
