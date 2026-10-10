@@ -14,6 +14,7 @@ use crate::dictations::{self, Dictation};
 use crate::events::{DictateMode, DPhase, DictateState, EventTx, UiEvent};
 use crate::hotkeys::{self, HotkeyEvent};
 use crate::notes::{self, Note};
+#[cfg(target_os = "macos")]
 use crate::paste_focus;
 use crate::search::{self, SearchResult};
 use crate::settings::{self, Settings};

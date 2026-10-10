@@ -20,6 +20,13 @@ pub struct Hotkeys {
     enter: Option<HotKey>,
 }
 
+// SAFETY: `GlobalHotKeyManager` is `!Send` on Windows (it wraps a raw
+// hook handle). The manager is created on, and only ever used from, the
+// main thread (see `Shared::ensure_hotkeys` and `App::pump_events`), so
+// cross-thread access never actually happens — this impl just lets
+// `Arc<Shared>` stay `Send`/`Sync` for the worker threads.
+unsafe impl Send for Hotkeys {}
+
 impl Hotkeys {
     /// Create the manager. Must be called on the main thread.
     pub fn new() -> Hotkeys {
