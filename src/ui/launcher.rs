@@ -236,6 +236,16 @@ fn draw_search(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
 
+    // Empty query → the list below is the command reference; label it.
+    let commands = app.query.trim().is_empty();
+    if commands {
+        ui.add_space(8.0);
+        ui.add(egui::Label::new(
+            egui::RichText::new("COMMANDS").small().color(SUBTEXT),
+        ));
+        ui.add_space(2.0);
+    }
+
     let scroll = egui::ScrollArea::vertical().auto_shrink(false);
     scroll.show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
@@ -247,8 +257,10 @@ fn draw_search(app: &mut App, ui: &mut egui::Ui) {
                 _ => SUBTEXT,
             };
             let badge = match item.kind.as_str() {
-                "app" if item.path.starts_with("__ask__") => "AI",
+                "app" if item.path.starts_with("__ask__") || item.path == "__chat__" => "AI",
                 "app" if item.path.starts_with("__dictate") => "Mic",
+                "app" if item.path.starts_with("__view_") => "Open",
+                "app" if item.path.starts_with("__cmd_") => "Cmd",
                 "app" => "App",
                 "folder" => "Folder",
                 _ => "File",
@@ -265,12 +277,18 @@ fn draw_search(app: &mut App, ui: &mut egui::Ui) {
 }
 
 /// Suggestions shown while typing in search view (local todo commands,
-/// AI hand-off and dictate entry points — no AI needed).
+/// AI hand-off and dictate entry points — no AI needed). With an empty
+/// query this becomes the launcher's browsable command reference.
 fn suggestions(app: &App) -> Vec<SearchResult> {
     let mut out = Vec::new();
     let q = app.query.trim();
-    if app.view != View::Search || q.is_empty() {
+    if app.view != View::Search {
         return out;
+    }
+    // Empty search bar: list every built-in command with a one-line
+    // description instead of the old single hint line.
+    if q.is_empty() {
+        return builtin_commands();
     }
     let lower = q.to_lowercase();
 
@@ -321,6 +339,74 @@ fn suggestions(app: &App) -> Vec<SearchResult> {
         kind: "app".into(),
     });
     out
+}
+
+/// The launcher's built-in commands, shown below an empty search bar.
+/// View commands jump straight to a section; "Cmd" rows are syntax
+/// examples — selecting one pre-fills the query so you finish typing.
+fn builtin_commands() -> Vec<SearchResult> {
+    vec![
+        SearchResult {
+            title: "todo".into(),
+            subtitle: "Show your todo list — toggle & delete inline".into(),
+            path: "__view_todos__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "notes".into(),
+            subtitle: "Browse notes — “notes wifi” filters them".into(),
+            path: "__view_notes__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "clipboard history".into(),
+            subtitle: "Recent clips — Enter copies again".into(),
+            path: "__view_clipboard__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "dictations".into(),
+            subtitle: "Transcript history with inline playback".into(),
+            path: "__view_dictations__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "add todo <text>".into(),
+            subtitle: "Quick-add a todo — no AI needed".into(),
+            path: "__cmd_add_todo__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "note: <text>".into(),
+            subtitle: "Quick-save a note — no AI needed".into(),
+            path: "__cmd_add_note__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "remind me to <text> at 5pm".into(),
+            subtitle: "Time-based reminder — notifies when due".into(),
+            path: "__cmd_remind__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "ai".into(),
+            subtitle: "Ask Supacast — todos, reminders, calendar".into(),
+            path: "__chat__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "dictate (text)".into(),
+            subtitle: "Record & transcribe → clipboard".into(),
+            path: "__dictate_text__".into(),
+            kind: "app".into(),
+        },
+        SearchResult {
+            title: "dictate (supacast)".into(),
+            subtitle: "Record & ask the Supacast AI".into(),
+            path: "__dictate_supacast__".into(),
+            kind: "app".into(),
+        },
+    ]
 }
 
 /// Case-insensitively strip a prefix that must be followed by whitespace,
@@ -434,17 +520,62 @@ fn handle_special(app: &mut App, path: &str) -> bool {
         app.send_chat(&q);
         return true;
     }
-    if path == "__dictate_text__" {
-        if let Some(ctx) = app_ctx(app).cloned() {
-            app.open_dictate(DictateMode::Text, &ctx);
-        }
+    if path == "__chat__" {
+        // "ai" from the empty-state command list: enter chat with no thread.
+        app.query.clear();
+        app.chat.clear();
+        app.dictate_thread = false;
+        app.view = View::Chat;
+        app.need_focus = true;
         return true;
     }
-    if path == "__dictate_supacast__" {
-        if let Some(ctx) = app_ctx(app).cloned() {
-            app.open_dictate(DictateMode::Supacast, &ctx);
+    match path {
+        "__view_todos__" => {
+            app.view = View::Todos;
+            app.load_todos();
+            return true;
         }
-        return true;
+        "__view_notes__" => {
+            app.view = View::Notes { query: String::new() };
+            app.load_notes("");
+            return true;
+        }
+        "__view_clipboard__" => {
+            app.view = View::Clipboard;
+            app.clips = crate::clipboard_hist::get_history();
+            return true;
+        }
+        "__view_dictations__" => {
+            app.view = View::Dictations;
+            app.load_dictations();
+            return true;
+        }
+        // Syntax examples: pre-fill the query so the user finishes typing.
+        "__cmd_add_todo__" => {
+            app.query = "add todo ".into();
+            return true;
+        }
+        "__cmd_add_note__" => {
+            app.query = "note: ".into();
+            return true;
+        }
+        "__cmd_remind__" => {
+            app.query = "remind me to ".into();
+            return true;
+        }
+        "__dictate_text__" => {
+            if let Some(ctx) = app_ctx(app).cloned() {
+                app.open_dictate(DictateMode::Text, &ctx);
+            }
+            return true;
+        }
+        "__dictate_supacast__" => {
+            if let Some(ctx) = app_ctx(app).cloned() {
+                app.open_dictate(DictateMode::Supacast, &ctx);
+            }
+            return true;
+        }
+        _ => {}
     }
     false
 }

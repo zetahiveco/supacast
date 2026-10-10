@@ -65,6 +65,7 @@ fn main() {
         hotkeys: Mutex::new(None),
         settings: Mutex::new(settings.clone()),
         dictate: Mutex::new(events::DictateState::default()),
+        dictate_history: Mutex::new(Vec::new()),
         recorder: Mutex::new(None),
         enter_held: std::sync::atomic::AtomicBool::new(false),
     });

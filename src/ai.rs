@@ -553,15 +553,17 @@ pub fn run_agent_stream(
 }
 
 /// Non-streaming convenience used by the dictate ring: collects the stream
-/// into a single final answer.
-pub fn run_agent(
+/// into a single final answer. Dictate continuations pass the thread
+/// history so follow-ups keep context.
+pub fn run_agent_with_history(
     api_key: &str,
     base_url: &str,
     model: &str,
+    history: &[ChatMsg],
     message: &str,
 ) -> Result<String, String> {
     let (tx, rx) = std::sync::mpsc::channel::<StreamEvent>();
-    run_agent_stream(api_key, base_url, model, &[], message, &tx)?;
+    run_agent_stream(api_key, base_url, model, history, message, &tx)?;
 
     let mut final_text = String::new();
     while let Ok(event) = rx.recv() {

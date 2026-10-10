@@ -45,6 +45,9 @@ pub struct Shared {
     pub settings: Mutex<Settings>,
     pub dictate: Mutex<DictateState>,
     pub recorder: Mutex<Option<audio::Recorder>>,
+    /// Conversation history of the current dictate (Supacast) thread —
+    /// read by the dictate worker so follow-up dictations keep context.
+    pub dictate_history: Mutex<Vec<ai::ChatMsg>>,
     /// Whether the physical (global) Enter key is currently held.
     pub enter_held: AtomicBool,
 }
@@ -539,19 +542,26 @@ impl App {
                 self.shared
                     .set_enter_capture(false);
                 // Show the launcher displaying the dictated Q&A.
+                let continuing = self.dictate_thread;
                 self.reset_launcher();
-                self.chat = vec![
-                    ChatTurn {
-                        role: "user".into(),
-                        content: message,
-                        ..ChatTurn::default()
-                    },
-                    ChatTurn {
-                        role: "assistant".into(),
-                        content: answer,
-                        ..ChatTurn::default()
-                    },
-                ];
+                let user_turn = ChatTurn {
+                    role: "user".into(),
+                    content: message,
+                    ..ChatTurn::default()
+                };
+                let answer_turn = ChatTurn {
+                    role: "assistant".into(),
+                    content: answer,
+                    ..ChatTurn::default()
+                };
+                if continuing {
+                    // Continued thread: append so the whole conversation
+                    // stays visible.
+                    self.chat.push(user_turn);
+                    self.chat.push(answer_turn);
+                } else {
+                    self.chat = vec![user_turn, answer_turn];
+                }
                 self.dictate_thread = true;
                 self.view = View::Chat;
                 self.show_launcher_keep_chat(ctx);
@@ -1045,6 +1055,28 @@ impl App {
     }
 
     pub fn open_dictate(&mut self, mode: DictateMode, ctx: &egui::Context) {
+        match mode {
+            DictateMode::Supacast if self.dictate_thread => {
+                // Continuing the dictated thread: seed the agent history
+                // with what's currently in the chat view (it may include
+                // typed follow-ups as well as dictated turns).
+                let seeded: Vec<ai::ChatMsg> = self
+                    .chat
+                    .iter()
+                    .filter(|t| !t.streaming && !t.content.trim().is_empty())
+                    .map(|t| ai::ChatMsg {
+                        role: t.role.clone(),
+                        content: t.content.clone(),
+                    })
+                    .collect();
+                *self.shared.dictate_history.lock().unwrap() = seeded;
+            }
+            DictateMode::Supacast => {
+                // A brand-new thread: forget any old history.
+                self.shared.dictate_history.lock().unwrap().clear();
+            }
+            DictateMode::Text => {}
+        }
         #[cfg(target_os = "macos")]
         paste_focus::capture(); // remember the user's paste target
         let mut d = self.shared.dictate.lock().unwrap();
@@ -1316,13 +1348,30 @@ fn process_dictation(
                         d.phase = DPhase::Thinking;
                     }
                     shared.repaint();
-                    match ai::run_agent(
+                    // Continue the thread: everything dictated (or typed in
+                    // the chat view) so far is passed as history.
+                    let history = shared.dictate_history.lock().unwrap().clone();
+                    match ai::run_agent_with_history(
                         &settings.openai_api_key,
                         &settings.chat_base_url,
                         &settings.chat_model,
+                        &history,
                         &text,
                     ) {
                         Ok(reply) => {
+                            // Remember the exchange so the next dictate in
+                            // this thread keeps its context.
+                            {
+                                let mut h = shared.dictate_history.lock().unwrap();
+                                h.push(ai::ChatMsg {
+                                    role: "user".into(),
+                                    content: text.clone(),
+                                });
+                                h.push(ai::ChatMsg {
+                                    role: "assistant".into(),
+                                    content: reply.clone(),
+                                });
+                            }
                             // Hand the Q&A to the launcher: it opens showing
                             // this exchange. Saved after the reply so the
                             // answer is stored with the recording.
