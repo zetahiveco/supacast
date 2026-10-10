@@ -1,6 +1,6 @@
 [package]
 name = "supacast"
-version = "0.2.1"
+version = "0.2.2"
 description = "Supacast - a fast launcher for apps and files (pure Rust egui)"
 authors = ["Harish"]
 edition = "2021"

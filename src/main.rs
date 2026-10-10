@@ -45,11 +45,33 @@ use events::UiEvent;
 
 fn main() {
     // --- Single instance ---
-    let instance = single_instance::SingleInstance::new("supacast-pure-single-instance")
-        .expect("failed to create single-instance guard");
-    if !instance.is_single() {
-        eprintln!("Supacast is already running.");
-        return;
+    // The single-instance crate treats the name as a LITERAL file path (on
+    // macOS it flocks it), so it must be absolute and in a always-writable
+    // location. A relative name resolves against the process CWD — which is
+    // `/` (read-only) for `open`/Finder/launchd launches, crashing the app
+    // with "Read-only file system" before anything else runs.
+    let lock_path = paths::data_dir().map(|dir| {
+        std::fs::create_dir_all(&dir).ok();
+        dir.join("instance.lock")
+    });
+    let instance = lock_path.and_then(|path| {
+        single_instance::SingleInstance::new(&path.to_string_lossy()).ok()
+    });
+    match instance {
+        Some(inst) if !inst.is_single() => {
+            eprintln!("Supacast is already running.");
+            return;
+        }
+        Some(inst) => {
+            // Hold the lock for the process lifetime (dropping it would
+            // release the flock and let a second instance start).
+            std::mem::forget(inst);
+        }
+        None => {
+            // Degrade gracefully: a stale/failed guard must never crash the
+            // app — worst case two instances run briefly.
+            eprintln!("could not create single-instance guard; continuing without it");
+        }
     }
 
     // --- Event plumbing ---
