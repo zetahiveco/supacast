@@ -133,6 +133,15 @@ PLIST
     # stamp is never applied — but strip any xattrs anyway to be safe.
     xattr -cr "$APP_DIR" 2>/dev/null || true
 
+    # Sign with the stable self-signed "Supacast Codesign" identity when it
+    # exists: TCC keys permissions (Accessibility, microphone) on the code
+    # signature, and ad-hoc signatures change every release — invalidating
+    # grants. Create the identity once with Keychain Access (or openssl) and
+    # upgrades keep their permissions. Fall back to ad-hoc silently.
+    if security find-identity -v -p codesigning 2>/dev/null | grep -q "Supacast Codesign"; then
+      codesign --force --sign "Supacast Codesign" "$APP_DIR" 2>/dev/null || true
+    fi
+
     # Keep a `supacast` command on PATH (symlink into the bundle).
     if [ -w /usr/local/bin ] || [ -w /usr/local 2>/dev/null ]; then
       ln -sfn "$APP_DIR/Contents/MacOS/supacast" /usr/local/bin/supacast 2>/dev/null \

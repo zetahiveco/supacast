@@ -112,7 +112,20 @@ fn build_applet() -> Option<std::path::PathBuf> {
     // Changing the executable/resources invalidates the ad-hoc signature,
     // so re-sign — then re-register with Launch Services so the system
     // picks up the new icon/name (banners cache both per bundle).
-    let _ = Command::new("codesign").args(["--force", "-s", "-"]).arg(&app).output();
+    //
+    // Prefer the stable self-signed "Supacast Codesign" identity (created
+    // once per machine) so TCC permissions for the applet survive app
+    // updates; ad-hoc fingerprints change with every rebuild and would
+    // invalidate the notification grant each release.
+    let signed = Command::new("codesign")
+        .args(["--force", "-s", "Supacast Codesign"])
+        .arg(&app)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !signed {
+        let _ = Command::new("codesign").args(["--force", "-s", "-"]).arg(&app).output();
+    }
     let _ = Command::new("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
         .args(["-f", "-R"])
         .arg(&app)
