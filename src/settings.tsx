@@ -20,6 +20,7 @@ interface Settings {
 const PROVIDERS: { value: string; label: string }[] = [
   { value: "openai", label: "OpenAI" },
   { value: "openrouter", label: "OpenRouter" },
+  { value: "ollama", label: "Ollama (local)" },
 ];
 
 /** Repeat-frequency choices (must match Settings → REPEAT_OPTIONS in the
@@ -189,7 +190,7 @@ export default function Settings() {
           <span className="field-label">AI — API key</span>
           <span className="field-hint">
             For the chat model, dictation and reminders. Default:
-            gpt-5-mini via OpenAI.
+            gpt-5-mini via OpenAI. Local Ollama doesn't need a key.
           </span>
           <input
             className="api-key-input"

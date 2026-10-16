@@ -10,17 +10,18 @@ pub fn default_shortcut() -> String {
 }
 
 /// API providers offered in Settings. OpenAI is the default; OpenRouter
-/// is the alternative (same OpenAI-compatible endpoints). (The frontend
-/// keeps its own copy of this list — this one documents the canonical
-/// values.)
+/// is the alternative; Ollama is the local option. (The frontend keeps
+/// its own copy of this list — this one documents the canonical values.)
 #[allow(dead_code)]
-pub const PROVIDERS: [&str; 2] = ["openai", "openrouter"];
+pub const PROVIDERS: [&str; 3] = ["openai", "openrouter", "ollama"];
 
 /// Default base URL for a provider. Selecting a provider in Settings
 /// switches the endpoint to its default.
 pub fn provider_base_url(provider: &str) -> &'static str {
     match provider.to_lowercase().as_str() {
         "openrouter" => "https://openrouter.ai/api/v1",
+        // Ollama's OpenAI-compatible endpoint on the default local port.
+        "ollama" => "http://localhost:11434/v1",
         _ => "https://api.openai.com/v1",
     }
 }
