@@ -139,6 +139,22 @@ body,
   color: #ffe19a;
 }
 
+.badge.todo {
+  background: rgba(124, 92, 255, 0.22);
+  color: #c9baff;
+}
+
+/* --- Empty-state command reference (launcher, empty query) --- */
+.section-header {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 8px 10px 2px;
+}
+
 /* --- Date-wise todo groups with check/uncheck --- */
 .todo-group {
   padding: 2px 0 6px;
@@ -413,6 +429,24 @@ body,
   border-color: var(--accent);
 }
 
+/* Settings: reminder frequency select */
+.repeat-select {
+  margin-top: 6px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 0;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13.5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.repeat-select:focus {
+  border-color: var(--accent);
+}
+
 /* ------------------------------------------------------------------ */
 /* Launcher: new views                                                 */
 /* ------------------------------------------------------------------ */
@@ -428,7 +462,70 @@ body,
   max-width: 380px;
 }
 
+/* --- Notes view --- */
+/* Rows are columns: one-line header, optional expanded detail below. */
+.result.note {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 9px 10px;
+}
+
+.note-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* One line per note — excess text is clipped with an ellipsis. */
+.note-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.result.note.selected {
+  background: var(--panel-active);
+}
+
+.note-detail {
+  margin-top: 8px;
+  padding: 8px 2px 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.note-full {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  max-height: 170px;
+  overflow-y: auto;
+}
+
 /* --- Dictation recordings view --- */
+/* Clipboard view header: clip count + Clear all. */
+.clip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px 2px;
+  flex-shrink: 0;
+}
+
+.clip-count {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
 .badge.mic {
   background: rgba(255, 140, 66, 0.22);
   color: #ffc69b;
@@ -544,6 +641,14 @@ body,
 
 .ghost-btn:hover {
   color: var(--text);
+}
+
+.ghost-btn.danger {
+  color: #ff6b6b;
+}
+
+.ghost-btn.danger:hover {
+  color: #ff8f8f;
 }
 
 /* ------------------------------------------------------------------ */
@@ -881,5 +986,8 @@ body,
   font-size: 13.5px;
   color: var(--text);
   max-width: 240px;
-  word-break: break-word;
+  /* Long transcripts are clipped to a single line with an ellipsis. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }

@@ -21,16 +21,20 @@ history and calendar events — plus an AI agent you can chat with.
 - 🚀 Lives in the **menu bar / system tray** (rocket icon) — no dock icon on macOS
 - 🔍 **Global app search** — macOS `.app` bundles, Windows Start Menu shortcuts
 - 📁 **Global file search** — macOS Spotlight (`mdfind`), Windows user-folder scan
-- ✅ **Todos & reminders** with due dates and background notifications
-- 📝 **Notes** with instant search
-- 📋 **Clipboard history** — everything you copy is one search away
+- ✅ **Todos & reminders** with due dates — overdue todos **re-notify on a
+  configurable interval** until done, and reminders missed while the app was
+  closed are caught up on launch
+- 📝 **Notes** with instant search — expand a row to read the full note
+- 📋 **Clipboard history** — everything you copy is one search away, with a
+  one-keystroke **clear clipboard** command
 - 📅 **Calendar** — view and create events straight from the launcher
 - 🎙️ **Dictate** — voice-to-text with paste into any app (or straight into the agent)
-- 🤖 **AI agent** — multi-turn chat with streamed output (bring your own API key)
+- 🤖 **AI agent** — multi-turn chat with streamed output and **web search** (bring your own API key)
 - ⌨️ Global shortcut **`⌘ + ⇧ + Y`** (macOS) / **`Ctrl + ⇧ + Y`** (Windows) —
   customizable from Settings
 - 🔄 **Launch at login** — starts automatically with your system after install
-- Blur-to-hide, keyboard-first navigation (↑↓ navigate, ↵ open, Esc hide)
+- Blur-to-hide, keyboard-first navigation (↑↓ navigate, ↵ open, Esc hide),
+  and a built-in **command reference on the empty launcher**
 
 ## Install
 

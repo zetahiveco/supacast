@@ -32,6 +32,7 @@ fn save_settings(
     openai_api_key: String,
     chat_base_url: Option<String>,
     chat_model: Option<String>,
+    remind_repeat_min: Option<u64>,
 ) -> Result<settings::Settings, String> {
     let mut current = settings::load(&app);
     let shortcut = normalize_shortcut(&shortcut);
@@ -58,6 +59,9 @@ fn save_settings(
     }
     if let Some(model) = chat_model {
         current.chat_model = model.trim().to_string();
+    }
+    if let Some(mins) = remind_repeat_min {
+        current.remind_repeat_min = if mins == 0 { None } else { Some(mins) };
     }
     settings::save(&app, &current)?;
     Ok(current)
@@ -188,6 +192,12 @@ fn get_clipboard_history(app: tauri::AppHandle) -> Vec<clipboard_hist::ClipEntry
 #[tauri::command]
 fn copy_to_clipboard(app: tauri::AppHandle, text: String) -> Result<(), String> {
     clipboard_hist::copy_to_clipboard(&app, &text)
+}
+
+/// Wipe the entire clipboard history (launcher command + Clear all button).
+#[tauri::command]
+fn clear_clipboard_history(app: tauri::AppHandle) {
+    clipboard_hist::clear_history(&app)
 }
 
 // --- Calendar ---
@@ -683,6 +693,7 @@ pub fn run() {
             delete_note,
             get_clipboard_history,
             copy_to_clipboard,
+            clear_clipboard_history,
             save_dictation,
             list_dictations,
             delete_dictation,

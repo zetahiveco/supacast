@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -7,7 +7,7 @@ interface SearchResult {
   title: string;
   subtitle: string;
   path: string;
-  kind: "app" | "file" | "folder";
+  kind: "app" | "file" | "folder" | "todo";
 }
 
 interface Todo {
@@ -106,6 +106,8 @@ export default function Launcher() {
   const [dictations, setDictations] = useState<Dictation[]>([]);
   const [selDict, setSelDict] = useState<string | null>(null);
   const [dictAudio, setDictAudio] = useState<{ id: string; url: string } | null>(null);
+  // Expanded note in the notes view (long notes are clipped to one line).
+  const [selNote, setSelNote] = useState<string | null>(null);
   // Chat state (Ask Supacast)
   const [chat, setChat] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
@@ -270,9 +272,18 @@ export default function Launcher() {
         .then(setNotes)
         .catch(console.error);
       setActive(0);
+      setSelNote(null);
     } else if (view.kind === "clipboard") {
       invoke<ClipEntry[]>("get_clipboard_history").then(setClips).catch(console.error);
       setActive(0);
+    } else if (view.kind === "search") {
+      // Empty launcher: pending todos headline the list, so keep them
+      // loaded. "clear …" needs the clip count for its confirm subtitle.
+      if (!query.trim()) {
+        invoke<Todo[]>("list_todos", { scope: "all" }).then(setTodos).catch(console.error);
+      } else if (/^clear/i.test(query.trim())) {
+        invoke<ClipEntry[]>("get_clipboard_history").then(setClips).catch(console.error);
+      }
     } else if (view.kind === "dictations") {
       invoke<Dictation[]>("list_dictations", { query: null })
         .then(setDictations)
@@ -313,6 +324,11 @@ export default function Launcher() {
   const copyClip = useCallback(async (text: string) => {
     await invoke("copy_to_clipboard", { text });
     invoke("hide_launcher");
+  }, []);
+
+  /** Clear all button / command: wipe the clipboard history in place. */
+  const clearAllClips = useCallback(() => {
+    invoke("clear_clipboard_history").then(() => setClips([])).catch(console.error);
   }, []);
 
   /** Select (or deselect) a dictation: expands the full transcript and
@@ -361,9 +377,16 @@ export default function Launcher() {
     invoke<Todo[]>("list_todos", { scope: "all" }).then(setTodos).catch(console.error);
   }, []);
 
+  /** Select (or deselect) a note: expands it below the row to show the
+   * full text — long notes are clipped to one line in the list. */
+  const toggleNote = useCallback((n: Note) => {
+    setSelNote((sel) => (sel === n.id ? null : n.id));
+  }, []);
+
   const deleteNote = useCallback(
     async (id: string) => {
       await invoke("delete_note", { id });
+      setSelNote((sel) => (sel === id ? null : sel));
       const query = view.kind === "notes" ? (view.query ?? "") : "";
       invoke<Note[]>("list_notes", { query }).then(setNotes).catch(console.error);
     },
@@ -504,6 +527,56 @@ export default function Launcher() {
           .catch(console.error);
         return true;
       }
+      // Empty-state command list: jump straight to a section.
+      if (path.startsWith("__view_")) {
+        const kind = path.slice("__view_".length) as
+          | "todos"
+          | "notes"
+          | "clipboard"
+          | "dictations";
+        setQuery("");
+        setView({ kind });
+        requestAnimationFrame(() => inputRef.current?.focus());
+        return true;
+      }
+      // "ai" from the empty-state command list: enter chat with no thread.
+      if (path === "__chat__") {
+        setQuery("");
+        setChat([]);
+        setDictateThread(false);
+        setView({ kind: "chat" });
+        requestAnimationFrame(() => inputRef.current?.focus());
+        return true;
+      }
+      // "clear clipboard": wipe the history, then show the emptied view
+      // as inline feedback instead of a notification banner.
+      if (path === "__clear_clipboard__") {
+        invoke("clear_clipboard_history")
+          .then(() => {
+            setClips([]);
+            setQuery("");
+            setView({ kind: "clipboard" });
+            requestAnimationFrame(() => inputRef.current?.focus());
+          })
+          .catch(console.error);
+        return true;
+      }
+      // Syntax examples: pre-fill the query so the user finishes typing.
+      if (path === "__cmd_add_todo__") {
+        setQuery("add todo ");
+        inputRef.current?.focus();
+        return true;
+      }
+      if (path === "__cmd_add_note__") {
+        setQuery("note: ");
+        inputRef.current?.focus();
+        return true;
+      }
+      if (path === "__cmd_remind__") {
+        setQuery("remind me to ");
+        inputRef.current?.focus();
+        return true;
+      }
       return false;
     },
     [],
@@ -544,7 +617,7 @@ export default function Launcher() {
       mouseMovedRef.current = false; // keyboard selection wins over hover
       const len =
         view.kind === "search"
-          ? allResults.length
+          ? searchRows.length
           : view.kind === "todos"
             ? flatTodos.length
             : view.kind === "notes"
@@ -567,7 +640,7 @@ export default function Launcher() {
           setQuery("");
           return;
         }
-        const item = allResults[active];
+        const item = searchRows[active];
         if (!item) return;
         if (handleSpecial(item.path)) return;
         if (item.path === "__ask__") {
@@ -582,8 +655,9 @@ export default function Launcher() {
       } else if (view.kind === "todos" && flatTodos[active]) {
         toggleTodo(flatTodos[active]);
       } else if (view.kind === "notes" && notes[active]) {
-        // Enter copies the note to the clipboard so it can be pasted anywhere.
-        copyClip(notes[active].text);
+        // Enter expands the note (long ones are clipped in the list);
+        // copying is available from the expanded detail.
+        toggleNote(notes[active]);
       } else if (view.kind === "clipboard" && clips[active]) {
         copyClip(clips[active].text);
       } else if (view.kind === "dictations" && dictations[active]) {
@@ -713,8 +787,58 @@ export default function Launcher() {
       path: "__dictate_supacast__",
       kind: "app",
     });
+    // "clear clipboard" — typed command to wipe the clip history.
+    if (/^clear/i.test(query.trim())) {
+      suggestions.push({
+        title: "Clear clipboard history",
+        subtitle: `Deletes all ${clips.length} clips — press Enter to confirm`,
+        path: "__clear_clipboard__",
+        kind: "app",
+      });
+    }
   }
   const allResults = [...suggestions, ...results];
+
+  // Empty search bar: pending todos first (dated soonest at the top, then
+  // undated), followed by every built-in command — the launcher's browsable
+  // reference, mirroring what you can type.
+  const emptyQuery = view.kind === "search" && !query.trim();
+  const emptyStateRows: SearchResult[] = [];
+  if (emptyQuery) {
+    const pending = todos.filter((t) => !t.done);
+    // Dated todos first — the sort is stable so ties keep their saved order.
+    pending.sort((a, b) => Number(!a.due) - Number(!b.due));
+    const shown = pending.slice(0, 5).map((t) => ({
+      title: t.text,
+      subtitle: t.due ? fmtDue(t.due) : "No due date",
+      path: "__view_todos__",
+      kind: "todo" as const,
+    }));
+    emptyStateRows.push(...shown);
+    const hidden = pending.length - shown.length;
+    if (hidden > 0) {
+      emptyStateRows.push({
+        title: `+${hidden} more todo${hidden === 1 ? "" : "s"}`,
+        subtitle: "Open Todos to see everything",
+        path: "__view_todos__",
+        kind: "todo",
+      });
+    }
+    emptyStateRows.push(
+      { title: "todo", subtitle: "Show your todo list — toggle & delete inline", path: "__view_todos__", kind: "app" },
+      { title: "notes", subtitle: "Browse notes — “notes wifi” filters them", path: "__view_notes__", kind: "app" },
+      { title: "clipboard history", subtitle: "Recent clips — Enter copies again", path: "__view_clipboard__", kind: "app" },
+      { title: "clear clipboard", subtitle: "Delete the entire clipboard history", path: "__clear_clipboard__", kind: "app" },
+      { title: "dictations", subtitle: "Transcript history with inline playback", path: "__view_dictations__", kind: "app" },
+      { title: "add todo <text>", subtitle: "Quick-add a todo — no AI needed", path: "__cmd_add_todo__", kind: "app" },
+      { title: "note: <text>", subtitle: "Quick-save a note — no AI needed", path: "__cmd_add_note__", kind: "app" },
+      { title: "remind me to <text> at 5pm", subtitle: "Time-based reminder — notifies when due", path: "__cmd_remind__", kind: "app" },
+      { title: "ai", subtitle: "Ask Supacast — todos, reminders, calendar", path: "__chat__", kind: "app" },
+      { title: "dictate (text)", subtitle: "Record & transcribe → clipboard", path: "__dictate_text__", kind: "app" },
+      { title: "dictate (supacast)", subtitle: "Record & ask the Supacast AI", path: "__dictate_supacast__", kind: "app" },
+    );
+  }
+  const searchRows = emptyQuery ? emptyStateRows : allResults;
 
   const isDictateQuery = /^dictate\s*\(/i.test(query.trim());
 
@@ -868,28 +992,47 @@ export default function Launcher() {
       {/* ---- Notes view ---- */}
       {view.kind === "notes" && (
         <ul className="results" ref={listRef}>
-          {notes.map((n, i) => (
-            <li
-              key={n.id}
-              className={`result ${i === active ? "active" : ""}`}
-              onMouseEnter={() => hover(i)}
-              onClick={() => copyClip(n.text)}
-            >
-              <span className="badge note">Note</span>
-              <span className="result-title clip-text">{n.text}</span>
-              <span className="result-sub">{fmtDue(n.created)}</span>
-              <button
-                className="row-trash"
-                title="Delete note"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteNote(n.id);
-                }}
+          {notes.map((n, i) => {
+            const selected = selNote === n.id;
+            return (
+              <li
+                key={n.id}
+                className={`result note ${i === active ? "active" : ""} ${selected ? "selected" : ""}`}
+                onMouseEnter={() => hover(i)}
+                onClick={() => toggleNote(n)}
               >
-                🗑
-              </button>
-            </li>
-          ))}
+                {/* One line per note; long text is clipped with an ellipsis. */}
+                <div className="note-row">
+                  <span className="badge note">Note</span>
+                  <span className="result-title note-text">{n.text}</span>
+                  <span className="result-sub">{fmtDue(n.created)}</span>
+                  <button
+                    className="row-trash"
+                    title="Delete note"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNote(n.id);
+                    }}
+                  >
+                    🗑
+                  </button>
+                </div>
+                {/* Selected: full note text + copy action. */}
+                {selected && (
+                  <div className="note-detail" onClick={(e) => e.stopPropagation()}>
+                    <p className="note-full">{n.text}</p>
+                    <button
+                      className="ghost-btn"
+                      title="Copy note to clipboard"
+                      onClick={() => copyClip(n.text)}
+                    >
+                      ⧉ Copy
+                    </button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
           {notes.length === 0 && (
             <li className="empty">
               {view.query
@@ -902,21 +1045,34 @@ export default function Launcher() {
 
       {/* ---- Clipboard history view ---- */}
       {view.kind === "clipboard" && (
-        <ul className="results" ref={listRef}>
-          {clips.map((c, i) => (
-            <li
-              key={i}
-              className={`result ${i === active ? "active" : ""}`}
-              onMouseEnter={() => hover(i)}
-              onClick={() => copyClip(c.text)}
-            >
-              <span className="badge file">Clip</span>
-              <span className="result-title clip-text">{c.text.slice(0, 120)}</span>
-              <span className="result-sub">{fmtDue(c.at)}</span>
-            </li>
-          ))}
-          {clips.length === 0 && <li className="empty">Clipboard history is empty</li>}
-        </ul>
+        <Fragment>
+          {/* Header: clip count on the left, Clear all on the right. */}
+          <div className="clip-header">
+            <span className="clip-count">
+              {clips.length} clip{clips.length === 1 ? "" : "s"}
+            </span>
+            {clips.length > 0 && (
+              <button className="ghost-btn danger" onClick={clearAllClips} title="Delete all clips">
+                Clear all
+              </button>
+            )}
+          </div>
+          <ul className="results" ref={listRef}>
+            {clips.map((c, i) => (
+              <li
+                key={i}
+                className={`result ${i === active ? "active" : ""}`}
+                onMouseEnter={() => hover(i)}
+                onClick={() => copyClip(c.text)}
+              >
+                <span className="badge file">Clip</span>
+                <span className="result-title clip-text">{c.text.slice(0, 120)}</span>
+                <span className="result-sub">{fmtDue(c.at)}</span>
+              </li>
+            ))}
+            {clips.length === 0 && <li className="empty">Clipboard history is empty</li>}
+          </ul>
+        </Fragment>
       )}
 
       {/* ---- Dictation recordings view ---- */}
@@ -974,45 +1130,65 @@ export default function Launcher() {
         </ul>
       )}
 
-      {/* ---- Search results ---- */}
-      {view.kind === "search" && allResults.length > 0 && (
+      {/* ---- Search results / empty-state command reference ---- */}
+      {view.kind === "search" && searchRows.length > 0 && (
         <ul className="results" ref={listRef}>
-          {allResults.map((r, i) => (
-            <li
-              key={r.path + i}
-              className={`result ${i === active ? "active" : ""}`}
-              onMouseEnter={() => hover(i)}
-              onClick={() => {
-                if (handleSpecial(r.path)) return;
-                if (r.path === "__ask__") sendChat(query.trim());
-                else if (r.path === "__dictate_text__") openDictate("text");
-                else if (r.path === "__dictate_supacast__") openDictate("supacast");
-                else open(r);
-              }}
-            >
-              <span className={`badge ${r.kind === "app" && r.path.startsWith("__") ? "ai" : r.kind}`}>
-                {r.path.startsWith("__ask__")
-                  ? "AI"
-                  : r.kind === "app"
-                    ? "App"
-                    : r.kind === "folder"
-                      ? "Folder"
-                      : "File"}
-              </span>
-              <span className="result-title">{r.title}</span>
-              <span className="result-sub">{r.subtitle}</span>
-            </li>
-          ))}
+          {searchRows.map((r, i) => {
+            // Empty query: label the sections — "TODOS" above the first
+            // todo row, "COMMANDS" where the app/command rows begin.
+            const header = emptyQuery
+              ? i === 0
+                ? r.kind === "todo"
+                  ? "TODOS"
+                  : "COMMANDS"
+                : r.kind !== "todo" && searchRows[i - 1].kind === "todo"
+                  ? "COMMANDS"
+                  : null
+              : null;
+            return (
+              <Fragment key={r.path + i}>
+                {header && <li className="section-header">{header}</li>}
+                <li
+                  className={`result ${i === active ? "active" : ""}`}
+                  onMouseEnter={() => hover(i)}
+                  onClick={() => {
+                    if (handleSpecial(r.path)) return;
+                    if (r.path === "__ask__") sendChat(query.trim());
+                    else if (r.path === "__dictate_text__") openDictate("text");
+                    else if (r.path === "__dictate_supacast__") openDictate("supacast");
+                    else open(r);
+                  }}
+                >
+                  <span
+                    className={`badge ${
+                      r.kind === "todo"
+                        ? "todo"
+                        : r.kind === "app" && r.path.startsWith("__")
+                          ? "ai"
+                          : r.kind
+                    }`}
+                  >
+                    {r.kind === "todo"
+                      ? "Todo"
+                      : r.path.startsWith("__ask__") || r.path === "__chat__"
+                        ? "AI"
+                        : r.kind === "app"
+                          ? "App"
+                          : r.kind === "folder"
+                            ? "Folder"
+                            : "File"}
+                  </span>
+                  <span className="result-title">{r.title}</span>
+                  <span className="result-sub">{r.subtitle}</span>
+                </li>
+              </Fragment>
+            );
+          })}
         </ul>
       )}
 
       {view.kind === "search" && query.trim() && !searching && allResults.length === 0 && (
         <div className="empty">No results for “{query.trim()}”</div>
-      )}
-      {view.kind === "search" && !query.trim() && (
-        <div className="empty hint">
-          Type to search • Try “todo”, “notes”, “clipboard history”, “dictations”, “note: …”
-        </div>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 [package]
 name = "supacast"
-version = "0.1.0"
+version = "0.3.0"
 description = "Supacast - a fast launcher for apps and files"
 authors = ["Harish"]
 edition = "2021"

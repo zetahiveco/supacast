@@ -8,7 +8,21 @@ interface Settings {
   openai_api_key: string;
   chat_base_url: string;
   chat_model: string;
+  /** Overdue-todo reminder repeat interval in minutes; 0/null = never. */
+  remind_repeat_min: number | null;
 }
+
+/** Repeat-frequency choices (must match Settings → REPEAT_OPTIONS in the
+ * Rust backend): minutes 0 means "notify once, never repeat". */
+const REPEAT_OPTIONS: [string, number][] = [
+  ["10 min", 10],
+  ["15 min", 15],
+  ["30 min", 30],
+  ["45 min", 45],
+  ["1 hour", 60],
+  ["2 hours", 120],
+  ["Never", 0],
+];
 
 const isMac = navigator.platform.toLowerCase().includes("mac");
 
@@ -52,6 +66,7 @@ function comboFromEvent(e: KeyboardEvent): string | null {
 export default function Settings() {
   const [shortcut, setShortcut] = useState<string>("");
   const [apiKey, setApiKey] = useState<string>("");
+  const [repeatMin, setRepeatMin] = useState<number>(30);
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
   const [error, setError] = useState("");
@@ -62,6 +77,7 @@ export default function Settings() {
       .then((s) => {
         setShortcut(s.shortcut);
         setApiKey(s.openai_api_key || "");
+        setRepeatMin(s.remind_repeat_min ?? 0);
       })
       .catch((e) => console.error(e));
     const unlisten = listen("settings-shown", () => {
@@ -101,6 +117,7 @@ export default function Settings() {
         openaiApiKey: apiKey,
         chatBaseUrl: null,
         chatModel: null,
+        remindRepeatMin: repeatMin,
       });
       setShortcut(updated.shortcut);
       setStatus("saved");
@@ -164,6 +181,24 @@ export default function Settings() {
             autoComplete="off"
             onChange={(e) => setApiKey(e.target.value)}
           />
+        </label>
+
+        <label className="field">
+          <span className="field-label">Todo reminder frequency</span>
+          <span className="field-hint">
+            Overdue, incomplete todos re-notify on this interval until done.
+          </span>
+          <select
+            className="repeat-select"
+            value={repeatMin}
+            onChange={(e) => setRepeatMin(Number(e.target.value))}
+          >
+            {REPEAT_OPTIONS.map(([label, mins]) => (
+              <option key={mins} value={mins}>
+                {label}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="field">

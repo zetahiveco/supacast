@@ -13,9 +13,12 @@ pub struct Todo {
     pub due: Option<DateTime<Local>>,
     #[serde(default)]
     pub done: bool,
-    /// True once the reminder notification has been fired for a due item.
+    /// When the last reminder notification for this todo was fired
+    /// (None = never). Overdue, incomplete todos re-notify on an interval
+    /// (Settings → notification frequency) until done. Replaces the old
+    /// one-shot `notified` bool, which is ignored on read.
     #[serde(default)]
-    pub notified: bool,
+    pub notified_at: Option<DateTime<Local>>,
     #[serde(default)]
     pub created: Option<DateTime<Local>>,
 }
@@ -73,7 +76,7 @@ pub fn add(
         text: text.trim().to_string(),
         due: due_raw.and_then(parse_due),
         done: false,
-        notified: false,
+        notified_at: None,
         created: Some(Local::now()),
     };
     todos.push(todo.clone());
@@ -93,14 +96,15 @@ pub fn complete(app: &AppHandle, id: &str) -> Result<(), String> {
 }
 
 /// Check (done = true) or uncheck (done = false) a todo. Unchecking also
-/// clears the notified flag so a reminder can fire again if it comes due.
+/// clears the last-notified time so the reminder restarts from "notify
+/// now" when it comes due again.
 pub fn set_done(app: &AppHandle, id: &str, done: bool) -> Result<(), String> {
     let mut todos = load_all(app);
     match todos.iter_mut().find(|t| t.id == id) {
         Some(t) => {
             t.done = done;
             if !done {
-                t.notified = false;
+                t.notified_at = None;
             }
             save_all(app, &todos)
         }
@@ -139,17 +143,92 @@ pub fn list(app: &AppHandle, scope: &str) -> Vec<Todo> {
 // Reminder scheduler (background thread)
 // ---------------------------------------------------------------------------
 
-/// Fire notifications for todos that just came due. Runs every 15s.
+/// Cron for due-todo notifications while the process is running (even with
+/// the launcher window hidden — the app lives in the menu bar/tray). Ticks
+/// every 15s: a todo past its due time is notified within seconds.
+///
+/// An overdue, incomplete todo re-notifies on the configured interval
+/// (Settings → notification frequency, default 30 min) until it is checked
+/// off. `None`/0 means notify once and stop.
+///
+/// The first pass right after launch is a catch-up: reminders that came due
+/// while the app was closed (process not running) are fired then — a few
+/// individually, a big pile as one summary so reopening isn't spammed.
 pub fn spawn_reminder_loop(app: AppHandle) {
-    std::thread::spawn(move || loop {
-        if let Err(e) = check_due(&app) {
-            eprintln!("reminder check failed: {e}");
+    std::thread::spawn(move || {
+        if let Err(e) = check_missed(&app) {
+            eprintln!("reminder catch-up failed: {e}");
         }
-        std::thread::sleep(std::time::Duration::from_secs(15));
+        loop {
+            let repeat_min = super::settings::load(&app).remind_repeat_min;
+            if let Err(e) = check_due(&app, repeat_min) {
+                eprintln!("reminder check failed: {e}");
+            }
+            std::thread::sleep(std::time::Duration::from_secs(15));
+        }
     });
 }
 
-fn check_due(app: &AppHandle) -> Result<(), String> {
+/// Number of missed reminders still sent one-by-one before batching into a
+/// single summary notification (launch-time only).
+const MISSED_INDIVIDUAL_MAX: usize = 3;
+
+/// Startup catch-up: notify never-notified todos that became due while the
+/// app was not running. One or two are sent individually (the body carries
+/// the todo text); anything more is summarized into a single notification
+/// pointing at the Todos view (which shows an "Overdue" group), so
+/// reopening after a few days doesn't stack a dozen popups.
+fn check_missed(app: &AppHandle) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+
+    let mut todos = load_all(app);
+    let now = Local::now();
+
+    let is_missed = |t: &Todo| {
+        !t.done && t.notified_at.is_none() && t.due.map(|d| d <= now).unwrap_or(false)
+    };
+    let missed: Vec<String> = todos
+        .iter()
+        .filter(|t| is_missed(t))
+        .map(|t| t.text.clone())
+        .collect();
+    if missed.is_empty() {
+        return Ok(());
+    }
+
+    if missed.len() <= MISSED_INDIVIDUAL_MAX {
+        for text in &missed {
+            let _ = app
+                .notification()
+                .builder()
+                .title("Supacast reminder (missed)")
+                .body(text)
+                .show();
+        }
+    } else {
+        let _ = app
+            .notification()
+            .builder()
+            .title("Supacast reminders")
+            .body(format!(
+                "{} reminders came due while Supacast was closed — open Todos to review them.",
+                missed.len()
+            ))
+            .show();
+    }
+
+    for todo in todos.iter_mut() {
+        if is_missed(todo) {
+            todo.notified_at = Some(now);
+        }
+    }
+    save_all(app, &todos)
+}
+
+/// Periodic pass: notify todos that just came due, and re-notify overdue
+/// incomplete todos whose repeat interval has elapsed since the last
+/// notification. `repeat_min` is the Settings frequency (None/0 = once).
+fn check_due(app: &AppHandle, repeat_min: Option<u64>) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
 
     let mut todos = load_all(app);
@@ -157,19 +236,33 @@ fn check_due(app: &AppHandle) -> Result<(), String> {
     let mut changed = false;
 
     for todo in todos.iter_mut() {
-        if !todo.done && !todo.notified {
-            if let Some(due) = todo.due {
-                if due <= now {
-                    let _ = app
-                        .notification()
-                        .builder()
-                        .title("Supacast reminder")
-                        .body(&todo.text)
-                        .show();
-                    todo.notified = true;
-                    changed = true;
-                }
-            }
+        if todo.done {
+            continue;
+        }
+        let Some(due) = todo.due else {
+            continue;
+        };
+        if due > now {
+            continue;
+        }
+        // Fire now if never notified, or if the repeat interval has
+        // elapsed since the last notification (None/0 = never repeat).
+        let due_now = match todo.notified_at {
+            None => true,
+            Some(at) => match repeat_min {
+                None | Some(0) => false,
+                Some(mins) => now >= at + chrono::Duration::minutes(mins as i64),
+            },
+        };
+        if due_now {
+            let _ = app
+                .notification()
+                .builder()
+                .title("Supacast reminder")
+                .body(&todo.text)
+                .show();
+            todo.notified_at = Some(now);
+            changed = true;
         }
     }
 

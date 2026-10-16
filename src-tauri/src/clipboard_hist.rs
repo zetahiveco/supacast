@@ -85,3 +85,14 @@ pub fn copy_to_clipboard(app: &AppHandle, text: &str) -> Result<(), String> {
         .write_text(text)
         .map_err(|e| e.to_string())
 }
+
+/// Wipe the clipboard history — memory and disk in one step.
+pub fn clear_history(app: &AppHandle) {
+    {
+        let hist = app.state::<History>();
+        hist.lock().unwrap().clear();
+    }
+    if let Some(path) = history_path(app) {
+        let _ = fs::write(path, "[]");
+    }
+}
