@@ -816,18 +816,6 @@ pub fn run() {
                 apply_glass(&window);
             }
 
-            // Native dark titlebar for the settings window. tao's
-            // `set_theme` applies the appearance app-wide (NSApplication),
-            // which doesn't win over per-window overrides — so also set the
-            // dark appearance on this NSWindow directly.
-            if let Some(window) = app.get_webview_window("settings") {
-                let _ = window.set_theme(Some(tauri::Theme::Dark));
-                #[cfg(target_os = "macos")]
-                if let Ok(ns_window) = window.ns_window() {
-                    set_window_dark_appearance(ns_window);
-                }
-            }
-
             // Position the (hidden) launcher window, centered.
             if let Some(window) = app.get_webview_window("main") {
                 position_launcher(&window);
