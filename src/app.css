@@ -263,11 +263,13 @@ body,
 /* ------------------------------------------------------------------ */
 
 .settings {
-  position: relative;
   height: 100vh;
   display: flex;
   flex-direction: column;
+  /* The settings window uses the native platform window (title bar +
+     standard opaque background), so a solid surface instead of glass. */
   background: #14161d;
+  color: var(--text);
 }
 
 .settings-header {

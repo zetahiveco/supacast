@@ -654,6 +654,30 @@ fn position_launcher(window: &WebviewWindow) {
     }
 }
 
+/// Force an NSWindow to use the dark appearance (titlebar + border follow
+/// the app's dark theme regardless of the system setting).
+#[cfg(target_os = "macos")]
+fn set_window_dark_appearance(ns_window: *mut std::ffi::c_void) {
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2::msg_send;
+    use objc2_foundation::NSString;
+
+    unsafe {
+        let name = NSString::from_str("NSAppearanceNameDarkAqua");
+        let Some(cls) = AnyClass::get(c"NSAppearance") else {
+            eprintln!("NSAppearance class unavailable");
+            return;
+        };
+        let appearance: *mut AnyObject = msg_send![cls, appearanceNamed: &*name];
+        if appearance.is_null() {
+            eprintln!("dark appearance unavailable");
+            return;
+        }
+        let window = ns_window.cast::<AnyObject>();
+        let _: () = msg_send![window, setAppearance: appearance];
+    }
+}
+
 /// Frosted-glass effect: NSVisualEffectView on macOS, acrylic on Windows.
 fn apply_glass(window: &WebviewWindow) {
     #[cfg(target_os = "macos")]
@@ -814,6 +838,18 @@ pub fn run() {
             // platform window, so no vibrancy there).
             if let Some(window) = app.get_webview_window("main") {
                 apply_glass(&window);
+            }
+
+            // Native dark titlebar for the settings window. tao's
+            // `set_theme` applies the appearance app-wide (NSApplication),
+            // which doesn't win over per-window overrides — so also set the
+            // dark appearance on this NSWindow directly.
+            if let Some(window) = app.get_webview_window("settings") {
+                let _ = window.set_theme(Some(tauri::Theme::Dark));
+                #[cfg(target_os = "macos")]
+                if let Ok(ns_window) = window.ns_window() {
+                    set_window_dark_appearance(ns_window);
+                }
             }
 
             // Position the (hidden) launcher window, centered.
