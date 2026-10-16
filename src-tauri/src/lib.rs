@@ -794,6 +794,15 @@ pub fn run() {
                 apply_glass(&window);
             }
 
+            // Native dark titlebar for the settings window (the per-window
+            // `theme` config key isn't in this Tauri version's schema, so
+            // apply it at runtime).
+            if let Some(window) = app.get_webview_window("settings") {
+                if let Err(e) = window.set_theme(Some(tauri::Theme::Dark)) {
+                    eprintln!("could not set settings window theme: {e}");
+                }
+            }
+
             // Position the (hidden) launcher window, centered.
             if let Some(window) = app.get_webview_window("main") {
                 position_launcher(&window);
