@@ -266,8 +266,9 @@ body,
   height: 100vh;
   display: flex;
   flex-direction: column;
-  /* The settings window uses the native platform window (title bar +
-     standard opaque background), so a solid surface instead of glass. */
+  /* The settings window uses the native platform window with an Overlay
+     title bar (transparent, content paints underneath), so a solid dark
+     surface covers the whole window including the titlebar strip. */
   background: #14161d;
   color: var(--text);
 }
@@ -316,7 +317,8 @@ body,
 
 .settings-body {
   flex: 1;
-  padding: 22px;
+  /* Top padding clears the overlaid traffic lights + drag strip. */
+  padding: 56px 22px 22px;
   display: flex;
   flex-direction: column;
   gap: 24px;
