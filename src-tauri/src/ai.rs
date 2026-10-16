@@ -595,7 +595,13 @@ pub fn run_agent(
 // ---------------------------------------------------------------------------
 
 /// Transcribe a recorded audio clip (webm/mp4/wav) via the API endpoint.
-pub fn transcribe(api_key: &str, base_url: &str, audio_b64: &str, mime: &str) -> Result<String, String> {
+pub fn transcribe(
+    api_key: &str,
+    base_url: &str,
+    model: &str,
+    audio_b64: &str,
+    mime: &str,
+) -> Result<String, String> {
     if api_key.trim().is_empty() {
         return Err(
             "No API key configured. Open Supacast Settings and add your key.".to_string(),
@@ -617,9 +623,14 @@ pub fn transcribe(api_key: &str, base_url: &str, audio_b64: &str, mime: &str) ->
         .mime_str(mime)
         .map_err(|e| e.to_string())?;
 
+    let model_owned = if model.trim().is_empty() {
+        TRANSCRIBE_MODEL.to_string()
+    } else {
+        model.trim().to_string()
+    };
     let form = reqwest::blocking::multipart::Form::new()
         .part("file", part)
-        .text("model", TRANSCRIBE_MODEL);
+        .text("model", model_owned);
 
     let resp = client()
         .post(format!(

@@ -31,8 +31,12 @@ fn save_settings(
     app: tauri::AppHandle,
     shortcut: String,
     openai_api_key: String,
+    chat_provider: Option<String>,
     chat_base_url: Option<String>,
     chat_model: Option<String>,
+    transcribe_provider: Option<String>,
+    transcribe_base_url: Option<String>,
+    transcribe_model: Option<String>,
     remind_repeat_min: Option<u64>,
 ) -> Result<settings::Settings, String> {
     let mut current = settings::load(&app);
@@ -55,11 +59,28 @@ fn save_settings(
 
     current.shortcut = shortcut;
     current.openai_api_key = openai_api_key;
+    if let Some(provider) = chat_provider {
+        current.chat_provider = provider.trim().to_lowercase();
+        // Selecting a provider switches the endpoint to its default.
+        current.chat_base_url =
+            settings::provider_base_url(&current.chat_provider).to_string();
+    }
     if let Some(url) = chat_base_url {
         current.chat_base_url = url.trim().trim_end_matches('/').to_string();
     }
     if let Some(model) = chat_model {
         current.chat_model = model.trim().to_string();
+    }
+    if let Some(provider) = transcribe_provider {
+        current.transcribe_provider = provider.trim().to_lowercase();
+        current.transcribe_base_url =
+            settings::provider_base_url(&current.transcribe_provider).to_string();
+    }
+    if let Some(url) = transcribe_base_url {
+        current.transcribe_base_url = url.trim().trim_end_matches('/').to_string();
+    }
+    if let Some(model) = transcribe_model {
+        current.transcribe_model = model.trim().to_string();
     }
     if let Some(mins) = remind_repeat_min {
         current.remind_repeat_min = if mins == 0 { None } else { Some(mins) };
@@ -290,7 +311,8 @@ async fn transcribe_audio(
     tauri::async_runtime::spawn_blocking(move || {
         ai::transcribe(
             &settings.openai_api_key,
-            &settings.chat_base_url,
+            &settings.transcribe_base_url,
+            &settings.transcribe_model,
             &audio_base64,
             &mime,
         )

@@ -6,11 +6,21 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 interface Settings {
   shortcut: string;
   openai_api_key: string;
+  chat_provider: string;
   chat_base_url: string;
   chat_model: string;
+  transcribe_provider: string;
+  transcribe_base_url: string;
+  transcribe_model: string;
   /** Overdue-todo reminder repeat interval in minutes; 0/null = never. */
   remind_repeat_min: number | null;
 }
+
+/** API providers offered in Settings (must match the backend's PROVIDERS). */
+const PROVIDERS: { value: string; label: string }[] = [
+  { value: "openai", label: "OpenAI" },
+  { value: "openrouter", label: "OpenRouter" },
+];
 
 /** Repeat-frequency choices (must match Settings → REPEAT_OPTIONS in the
  * Rust backend): minutes 0 means "notify once, never repeat". */
@@ -66,6 +76,10 @@ function comboFromEvent(e: KeyboardEvent): string | null {
 export default function Settings() {
   const [shortcut, setShortcut] = useState<string>("");
   const [apiKey, setApiKey] = useState<string>("");
+  const [chatProvider, setChatProvider] = useState<string>("openai");
+  const [chatModel, setChatModel] = useState<string>("");
+  const [transcribeProvider, setTranscribeProvider] = useState<string>("openai");
+  const [transcribeModel, setTranscribeModel] = useState<string>("");
   const [repeatMin, setRepeatMin] = useState<number>(30);
   const [recording, setRecording] = useState(false);
   const [testSent, setTestSent] = useState(false);
@@ -78,6 +92,10 @@ export default function Settings() {
       .then((s) => {
         setShortcut(s.shortcut);
         setApiKey(s.openai_api_key || "");
+        setChatProvider(s.chat_provider || "openai");
+        setChatModel(s.chat_model || "");
+        setTranscribeProvider(s.transcribe_provider || "openai");
+        setTranscribeModel(s.transcribe_model || "");
         setRepeatMin(s.remind_repeat_min ?? 0);
       })
       .catch((e) => console.error(e));
@@ -117,8 +135,12 @@ export default function Settings() {
       const updated = await invoke<Settings>("save_settings", {
         shortcut,
         openaiApiKey: apiKey,
+        chatProvider,
         chatBaseUrl: null,
-        chatModel: null,
+        chatModel,
+        transcribeProvider,
+        transcribeBaseUrl: null,
+        transcribeModel,
         remindRepeatMin: repeatMin,
       });
       setShortcut(updated.shortcut);
@@ -179,6 +201,64 @@ export default function Settings() {
             onChange={(e) => setApiKey(e.target.value)}
           />
         </label>
+
+        <div className="field">
+          <span className="field-label">Chat model</span>
+          <span className="field-hint">
+            Provider and model for the AI agent (Ask Supacast).
+          </span>
+          <div className="provider-row">
+            <select
+              className="repeat-select provider-select"
+              value={chatProvider}
+              onChange={(e) => setChatProvider(e.target.value)}
+            >
+              {PROVIDERS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <input
+              className="model-input"
+              type="text"
+              placeholder="gpt-5-mini"
+              value={chatModel}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(e) => setChatModel(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="field">
+          <span className="field-label">Transcription model</span>
+          <span className="field-hint">
+            Provider and model for dictate (voice → text).
+          </span>
+          <div className="provider-row">
+            <select
+              className="repeat-select provider-select"
+              value={transcribeProvider}
+              onChange={(e) => setTranscribeProvider(e.target.value)}
+            >
+              {PROVIDERS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <input
+              className="model-input"
+              type="text"
+              placeholder="gpt-4o-mini-transcribe"
+              value={transcribeModel}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(e) => setTranscribeModel(e.target.value)}
+            />
+          </div>
+        </div>
 
         <label className="field">
           <span className="field-label">Todo reminder frequency</span>

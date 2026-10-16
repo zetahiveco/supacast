@@ -462,6 +462,36 @@ body,
   color: var(--text);
 }
 
+/* Settings: provider dropdown + model input rows (chat / transcription) */
+.provider-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.provider-row .repeat-select {
+  margin-top: 0;
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.model-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 0;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.model-input:focus {
+  border-color: var(--accent);
+}
+
 /* ------------------------------------------------------------------ */
 /* Launcher: new views                                                 */
 /* ------------------------------------------------------------------ */
