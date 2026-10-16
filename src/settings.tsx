@@ -165,9 +165,6 @@ export default function Settings() {
 
   return (
     <div className="settings">
-      {/* Title painted in the (transparent) titlebar strip — the native
-          title is hidden so it can't render in the wrong color. */}
-      <h1 className="settings-title">Supacast Settings</h1>
       <section className="settings-body">
         <label className="field">
           <span className="field-label">Global shortcut</span>

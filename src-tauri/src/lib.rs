@@ -635,11 +635,6 @@ fn show_settings(app: &tauri::AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
         let _ = window.emit("settings-shown", ());
-        // Re-assert the dark titlebar every time the window is shown.
-        #[cfg(target_os = "macos")]
-        if let Ok(ns_window) = window.ns_window() {
-            set_window_dark_appearance(ns_window);
-        }
     }
 }
 
@@ -656,34 +651,6 @@ fn position_launcher(window: &WebviewWindow) {
             let y = (mon_h - win_h) / 2.0;
             let _ = window.set_position(tauri::LogicalPosition::new(x, y));
         }
-    }
-}
-
-/// Force an NSWindow to use the dark appearance (titlebar + border follow
-/// the app's dark theme regardless of the system setting).
-#[cfg(target_os = "macos")]
-fn set_window_dark_appearance(ns_window: *mut std::ffi::c_void) {
-    use objc2::runtime::{AnyClass, AnyObject};
-    use objc2::msg_send;
-    use objc2_foundation::NSString;
-
-    unsafe {
-        let name = NSString::from_str("NSAppearanceNameDarkAqua");
-        let Some(cls) = AnyClass::get(c"NSAppearance") else {
-            eprintln!("NSAppearance class unavailable");
-            return;
-        };
-        let appearance: *mut AnyObject = msg_send![cls, appearanceNamed: &*name];
-        if appearance.is_null() {
-            eprintln!("dark appearance unavailable");
-            return;
-        }
-        let window = ns_window.cast::<AnyObject>();
-        let _: () = msg_send![window, setAppearance: appearance];
-        // Remove the native titlebar material entirely (on current macOS
-        // the Overlay style still draws a light glass strip over the
-        // content) — the dark webview surface becomes the titlebar.
-        let _: () = msg_send![window, setTitlebarAppearsTransparent: objc2::runtime::Bool::new(true)];
     }
 }
 
