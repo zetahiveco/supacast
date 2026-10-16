@@ -426,22 +426,40 @@ body,
   border-color: var(--accent);
 }
 
-/* Settings: reminder frequency select */
+/* Settings: reminder frequency select — styled to match the API key
+   input (flat, square corners); native macOS chrome is stripped and a
+   custom chevron is drawn in. */
 .repeat-select {
+  -webkit-appearance: none;
+  appearance: none;
   margin-top: 6px;
   width: 100%;
-  padding: 9px 12px;
+  padding: 10px 14px;
+  padding-right: 38px;
   border-radius: 0;
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
-  font-size: 13.5px;
+  font-family: inherit;
+  font-size: 14px;
   outline: none;
   cursor: pointer;
+  color-scheme: dark;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a0a3ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
 }
 
 .repeat-select:focus {
   border-color: var(--accent);
+  outline: none;
+}
+
+/* The expanded options list keeps native rendering (that part of the
+   control can't be styled) — just force it to the dark scheme. */
+.repeat-select option {
+  background-color: #14161d;
+  color: var(--text);
 }
 
 /* ------------------------------------------------------------------ */
