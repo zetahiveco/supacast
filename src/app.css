@@ -263,14 +263,32 @@ body,
 /* ------------------------------------------------------------------ */
 
 .settings {
+  position: relative;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  /* The settings window uses the native platform window with an Overlay
-     title bar (transparent, content paints underneath), so a solid dark
-     surface covers the whole window including the titlebar strip. */
+  /* Overlay titlebar: transparent strip over the dark surface, with the
+     title painted by the webview below. */
   background: #14161d;
   color: var(--text);
+}
+
+.settings-title {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e7e8ec;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .settings-header {
@@ -317,7 +335,8 @@ body,
 
 .settings-body {
   flex: 1;
-  padding: 22px;
+  /* Top padding clears the overlaid traffic lights + title text. */
+  padding: 56px 22px 22px;
   display: flex;
   flex-direction: column;
   gap: 24px;
