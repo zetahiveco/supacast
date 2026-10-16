@@ -680,6 +680,10 @@ fn set_window_dark_appearance(ns_window: *mut std::ffi::c_void) {
         }
         let window = ns_window.cast::<AnyObject>();
         let _: () = msg_send![window, setAppearance: appearance];
+        // Remove the native titlebar material entirely (on current macOS
+        // the Overlay style still draws a light glass strip over the
+        // content) — the dark webview surface becomes the titlebar.
+        let _: () = msg_send![window, setTitlebarAppearsTransparent: objc2::runtime::Bool::new(true)];
     }
 }
 
