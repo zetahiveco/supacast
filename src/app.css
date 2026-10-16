@@ -317,8 +317,7 @@ body,
 
 .settings-body {
   flex: 1;
-  /* Top padding clears the overlaid traffic lights + drag strip. */
-  padding: 56px 22px 22px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
   gap: 24px;

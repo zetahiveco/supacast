@@ -635,6 +635,11 @@ fn show_settings(app: &tauri::AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
         let _ = window.emit("settings-shown", ());
+        // Re-assert the dark titlebar every time the window is shown.
+        #[cfg(target_os = "macos")]
+        if let Ok(ns_window) = window.ns_window() {
+            set_window_dark_appearance(ns_window);
+        }
     }
 }
 
