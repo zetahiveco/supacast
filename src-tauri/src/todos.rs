@@ -179,8 +179,6 @@ const MISSED_INDIVIDUAL_MAX: usize = 3;
 /// pointing at the Todos view (which shows an "Overdue" group), so
 /// reopening after a few days doesn't stack a dozen popups.
 fn check_missed(app: &AppHandle) -> Result<(), String> {
-    use tauri_plugin_notification::NotificationExt;
-
     let mut todos = load_all(app);
     let now = Local::now();
 
@@ -198,23 +196,17 @@ fn check_missed(app: &AppHandle) -> Result<(), String> {
 
     if missed.len() <= MISSED_INDIVIDUAL_MAX {
         for text in &missed {
-            let _ = app
-                .notification()
-                .builder()
-                .title("Supacast reminder (missed)")
-                .body(text)
-                .show();
+            crate::notify::notify(app, "Supacast reminder (missed)", text);
         }
     } else {
-        let _ = app
-            .notification()
-            .builder()
-            .title("Supacast reminders")
-            .body(format!(
+        crate::notify::notify(
+            app,
+            "Supacast reminders",
+            &format!(
                 "{} reminders came due while Supacast was closed — open Todos to review them.",
                 missed.len()
-            ))
-            .show();
+            ),
+        );
     }
 
     for todo in todos.iter_mut() {
@@ -229,8 +221,6 @@ fn check_missed(app: &AppHandle) -> Result<(), String> {
 /// incomplete todos whose repeat interval has elapsed since the last
 /// notification. `repeat_min` is the Settings frequency (None/0 = once).
 fn check_due(app: &AppHandle, repeat_min: Option<u64>) -> Result<(), String> {
-    use tauri_plugin_notification::NotificationExt;
-
     let mut todos = load_all(app);
     let now = Local::now();
     let mut changed = false;
@@ -255,12 +245,7 @@ fn check_due(app: &AppHandle, repeat_min: Option<u64>) -> Result<(), String> {
             },
         };
         if due_now {
-            let _ = app
-                .notification()
-                .builder()
-                .title("Supacast reminder")
-                .body(&todo.text)
-                .show();
+            crate::notify::notify(app, "Supacast reminder", &todo.text);
             todo.notified_at = Some(now);
             changed = true;
         }

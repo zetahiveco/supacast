@@ -266,12 +266,9 @@ body,
   height: 100vh;
   display: flex;
   flex-direction: column;
-  /* Glass surface — blur comes from the window vibrancy layer behind it.
-     Tint is dark enough to keep text readable over any wallpaper. */
-  background: rgba(18, 20, 26, 0.68);
-  backdrop-filter: blur(28px) saturate(160%);
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  /* The settings window uses the native platform window (title bar +
+     standard opaque background), so a solid surface instead of glass. */
+  background: #14161d;
   color: var(--text);
 }
 

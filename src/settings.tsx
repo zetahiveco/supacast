@@ -68,6 +68,7 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState<string>("");
   const [repeatMin, setRepeatMin] = useState<number>(30);
   const [recording, setRecording] = useState(false);
+  const [testSent, setTestSent] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
   const [error, setError] = useState("");
   const statusTimer = useRef<number | undefined>(undefined);
@@ -82,6 +83,7 @@ export default function Settings() {
       .catch((e) => console.error(e));
     const unlisten = listen("settings-shown", () => {
       setStatus("idle");
+      setTestSent(false);
     });
     return () => {
       unlisten.then((fn) => fn());
@@ -129,22 +131,17 @@ export default function Settings() {
     statusTimer.current = window.setTimeout(() => setStatus("idle"), 2500);
   };
 
+  /** Fire a test notification so the user can verify banners/permissions. */
+  const sendTestNotification = () => {
+    invoke("test_notification").catch(console.error);
+    setTestSent(true);
+    window.setTimeout(() => setTestSent(false), 2500);
+  };
+
   const win = getCurrentWindow();
 
   return (
     <div className="settings">
-      <header className="settings-header" data-tauri-drag-region>
-        <span className="logo">🚀</span>
-        <h1 data-tauri-drag-region>Supacast Settings</h1>
-        <button
-          className="titlebar-close"
-          onClick={() => win.hide()}
-          aria-label="Close settings"
-        >
-          ✕
-        </button>
-      </header>
-
       <section className="settings-body">
         <label className="field">
           <span className="field-label">Global shortcut</span>
@@ -200,6 +197,22 @@ export default function Settings() {
             ))}
           </select>
         </label>
+
+        <div className="field">
+          <span className="field-label">Notifications</span>
+          <span className="field-hint">
+            Check banners, sound and permission grants.
+          </span>
+          <div className="shortcut-row">
+            <button
+              className="save-btn"
+              onClick={sendTestNotification}
+              disabled={testSent}
+            >
+              {testSent ? "Sent ✓" : "Send test notification"}
+            </button>
+          </div>
+        </div>
 
         <label className="field">
           <span className="field-label">Defaults</span>

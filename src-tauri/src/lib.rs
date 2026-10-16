@@ -3,6 +3,7 @@ mod calendar;
 mod clipboard_hist;
 mod dictations;
 mod notes;
+mod notify;
 mod paste_focus;
 mod search;
 mod settings;
@@ -200,6 +201,17 @@ fn clear_clipboard_history(app: tauri::AppHandle) {
     clipboard_hist::clear_history(&app)
 }
 
+/// Post a test notification (Settings → "Send test notification") so the
+/// user can verify banners, sound and permission grants in one click.
+#[tauri::command]
+fn test_notification(app: tauri::AppHandle) {
+    notify::notify(
+        &app,
+        "Supacast test notification",
+        "Notifications are working — reminders will look like this. 🚀",
+    );
+}
+
 // --- Calendar ---
 
 #[tauri::command]
@@ -290,14 +302,13 @@ async fn transcribe_audio(
 /// Copy dictated text and notify the user (paste with Cmd/Ctrl+V anywhere).
 #[tauri::command]
 fn dictate_to_text(app: tauri::AppHandle, text: String) -> Result<(), String> {
-    use tauri_plugin_notification::NotificationExt;
     clipboard_hist::copy_to_clipboard(&app, &text)?;
-    app.notification()
-        .builder()
-        .title("Supacast dictate")
-        .body("Transcript copied — paste with Cmd/Ctrl+V")
-        .show()
-        .map_err(|e| e.to_string())
+    notify::notify(
+        &app,
+        "Supacast dictate",
+        "Transcript copied — paste with Cmd/Ctrl+V",
+    );
+    Ok(())
 }
 
 /// Simulate a Cmd/Ctrl+V keystroke so the paste lands in whatever input
@@ -327,8 +338,6 @@ fn paste_keystroke() -> Result<(), String> {
 /// injection is blocked (e.g. missing Accessibility permission on macOS).
 #[tauri::command]
 async fn paste_to_focused_app(app: tauri::AppHandle, text: String) -> Result<(), String> {
-    use tauri_plugin_notification::NotificationExt;
-
     clipboard_hist::copy_to_clipboard(&app, &text)?;
     // The ring stays visible in its "done" state (with the transcript) so
     // the user can keep dictating — the global Enter capture stays active
@@ -354,23 +363,21 @@ async fn paste_to_focused_app(app: tauri::AppHandle, text: String) -> Result<(),
         let app_for_paste = app.clone();
         let _ = app_for_paste.clone().run_on_main_thread(move || {
             if paste_keystroke().is_err() {
-                let _ = app_for_paste
-                    .notification()
-                    .builder()
-                    .title("Supacast dictate")
-                    .body("Copied to clipboard — paste with Cmd/Ctrl+V")
-                    .show();
+                notify::notify(
+                    &app_for_paste,
+                    "Supacast dictate",
+                    "Copied to clipboard — paste with Cmd/Ctrl+V",
+                );
             }
         });
     }
     #[cfg(not(target_os = "macos"))]
     if paste_keystroke().is_err() {
-        let _ = app
-            .notification()
-            .builder()
-            .title("Supacast dictate")
-            .body("Copied to clipboard — paste with Cmd/Ctrl+V")
-            .show();
+        notify::notify(
+            &app,
+            "Supacast dictate",
+            "Copied to clipboard — paste with Cmd/Ctrl+V",
+        );
     }
     Ok(())
 }
@@ -542,20 +549,10 @@ fn normalize_shortcut(raw: &str) -> String {
 /// in tauri.conf.json (`plugins.updater` — endpoint serves `latest.json`
 /// from the latest GitHub release, produced by .github/workflows/release.yml).
 fn check_for_updates(app: &tauri::AppHandle) {
-    use tauri_plugin_notification::NotificationExt;
     use tauri_plugin_updater::UpdaterExt;
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let notify = |title: &str, body: &str| {
-            let _ = app
-                .notification()
-                .builder()
-                .title(title)
-                .body(body)
-                .show();
-        };
-
         let result: Result<bool, String> = async {
             let updater = app.updater().map_err(|e| e.to_string())?;
             // None means the current version is the newest known release.
@@ -571,14 +568,18 @@ fn check_for_updates(app: &tauri::AppHandle) {
         .await;
 
         match result {
-            Ok(false) => notify("Supacast", "You're on the latest version."),
+            Ok(false) => notify::notify(&app, "Supacast", "You're on the latest version."),
             Ok(true) => {
                 // Give the notification a beat before the process is replaced.
-                notify("Supacast", "Update downloaded — restarting to install…");
+                notify::notify(&app, "Supacast", "Update downloaded — restarting to install…");
                 std::thread::sleep(std::time::Duration::from_secs(1));
                 app.restart();
             }
-            Err(e) => notify("Supacast update failed", &truncate_str(&e, 160)),
+            Err(e) => notify::notify(
+                &app,
+                "Supacast update failed",
+                &truncate_str(&e, 160),
+            ),
         }
     });
 }
@@ -694,6 +695,7 @@ pub fn run() {
             get_clipboard_history,
             copy_to_clipboard,
             clear_clipboard_history,
+            test_notification,
             save_dictation,
             list_dictations,
             delete_dictation,
@@ -786,11 +788,10 @@ pub fn run() {
             todos::spawn_reminder_loop(handle.clone());
             clipboard_hist::spawn_clipboard_loop(handle.clone());
 
-            // Frosted glass for launcher + settings windows.
-            for label in ["main", "settings"] {
-                if let Some(window) = app.get_webview_window(label) {
-                    apply_glass(&window);
-                }
+            // Frosted glass for the launcher (the settings window uses the native
+            // platform window, so no vibrancy there).
+            if let Some(window) = app.get_webview_window("main") {
+                apply_glass(&window);
             }
 
             // Position the (hidden) launcher window, centered.
